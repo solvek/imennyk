@@ -46,13 +46,13 @@ describe("living persons", () => {
     });
   });
 
-  it("puts the cutoff 75 years before the current year", async () => {
+  it("puts the cutoff 90 years before the current year", async () => {
     expect(
       await scalar(
         client,
         "select extract(year from current_date)::int - ddb.living_cutoff_year() as v",
       ),
-    ).toBe(75);
+    ).toBe(90);
   });
 
   it("accepts a witness of an event up to the cutoff year", async () => {
