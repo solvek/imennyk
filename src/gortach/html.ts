@@ -14,6 +14,7 @@ export function page(title: string, body: string): string {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${esc(title)}</title>
+<link rel="icon" href="/favicon.ico" sizes="32x32">
 <link rel="icon" href="/logo.svg" type="image/svg+xml">
 <style>
   body { margin: 0; background: #f7f6f3; color: #1c1b19; font: 16px/1.5 ui-sans-serif, system-ui, sans-serif; }
