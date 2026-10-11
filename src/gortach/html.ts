@@ -47,6 +47,7 @@ export function page(title: string, body: string): string {
   .copy.copied .idle { display: none; }
   .copy.copied .ok { display: block; }
   .note { white-space: pre-wrap; }
+  .foot { max-width: 40rem; margin: 0 auto; padding: 0 16px 32px; font-size: 13px; display: flex; gap: 16px; flex-wrap: wrap; }
 </style>
 </head>
 <body>
