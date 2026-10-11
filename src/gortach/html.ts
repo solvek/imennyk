@@ -21,8 +21,13 @@ export function page(title: string, body: string): string {
 <style>
   body { margin: 0; background: #f7f6f3; color: #1c1b19; font: 16px/1.5 ui-sans-serif, system-ui, sans-serif; }
   a { color: #5b3a78; }
-  .bar { display: flex; align-items: center; padding: 14px 16px; }
+  .bar { display: flex; align-items: center; gap: 16px; padding: 14px 16px; }
   .brand { display: flex; align-items: center; gap: 8px; color: inherit; text-decoration: none; font-weight: 500; }
+  .session { margin-left: auto; display: flex; align-items: center; gap: 12px; font-size: 14px; }
+  .session form { margin: 0; }
+  .session button { font: inherit; color: #5b3a78; background: none; border: 0; padding: 0; cursor: pointer; }
+  .google { display: inline-flex; align-items: center; gap: 10px; margin-top: 16px; padding: 10px 16px; border: 1px solid #dadce0; border-radius: 4px; background: #fff; color: #1f1f1f; font-weight: 500; text-decoration: none; }
+  .fine { color: #5e5a55; font-size: 13px; }
   .mark { width: 28px; height: 28px; display: block; }
   .wrap { max-width: 40rem; margin: 0 auto; padding: 8px 16px 48px; }
   .sheet { background: #fff; border: 1px solid #e6e2da; border-radius: 12px; padding: 20px 16px 8px; }
