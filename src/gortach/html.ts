@@ -1,3 +1,5 @@
+import { RU_UI_LOCALE_SCRIPT } from "./ru-ui-locale.ts";
+
 /** Escape text for an HTML text node or a double-quoted attribute. */
 export function esc(value: string): string {
   return value
@@ -48,6 +50,7 @@ export function page(title: string, body: string): string {
 </style>
 </head>
 <body>
+<script>${RU_UI_LOCALE_SCRIPT}</script>
 ${body}
 </body>
 </html>
