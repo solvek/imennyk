@@ -1,3 +1,4 @@
+import type { Locale } from "../core/locale.ts";
 import { RU_UI_LOCALE_SCRIPT } from "./ru-ui-locale.ts";
 
 /** Escape text for an HTML text node or a double-quoted attribute. */
@@ -9,9 +10,9 @@ export function esc(value: string): string {
     .replaceAll('"', "&quot;");
 }
 
-export function page(title: string, body: string): string {
+export function page(locale: Locale, title: string, body: string): string {
   return `<!doctype html>
-<html lang="uk">
+<html lang="${locale}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -26,6 +27,8 @@ export function page(title: string, body: string): string {
   .session { margin-left: auto; display: flex; align-items: center; gap: 12px; font-size: 14px; }
   .session form { margin: 0; }
   .session button { font: inherit; color: #5b3a78; background: none; border: 0; padding: 0; cursor: pointer; }
+  .langs { display: flex; align-items: center; gap: 8px; font-size: 14px; }
+  .langs a[aria-current="true"] { color: inherit; font-weight: 600; text-decoration: none; pointer-events: none; }
   .google { display: inline-flex; align-items: center; gap: 10px; margin-top: 16px; padding: 10px 16px; border: 1px solid #dadce0; border-radius: 4px; background: #fff; color: #1f1f1f; font-weight: 500; text-decoration: none; }
   .fine { color: #5e5a55; font-size: 13px; }
   .mark { width: 28px; height: 28px; display: block; }
