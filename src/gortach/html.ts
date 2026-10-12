@@ -65,6 +65,15 @@ export function page(locale: Locale, title: string, body: string): string {
   .copy.copied .idle { display: none; }
   .copy.copied .ok { display: block; }
   .note { white-space: pre-wrap; }
+  .report { margin: 12px 0 0; font-size: 14px; }
+  .form { margin: 8px 0 16px; }
+  .form label { display: block; margin-top: 16px; font-weight: 500; }
+  .form .fine, .form .error { margin: 2px 0 0; }
+  .form input, .form textarea { box-sizing: border-box; width: 100%; margin-top: 6px; padding: 8px 10px; border: 1px solid #e6e2da; border-radius: 8px; background: #fff; color: inherit; font: inherit; }
+  .form textarea { resize: vertical; }
+  .form button { margin-top: 20px; padding: 10px 18px; border: 0; border-radius: 8px; background: #5b3a78; color: #fff; font: inherit; font-weight: 500; cursor: pointer; }
+  .error { color: #a3352b; font-size: 14px; }
+  .trap { position: absolute; left: -10000px; width: 1px; height: 1px; overflow: hidden; }
   .foot { max-width: 40rem; margin: 0 auto; padding: 0 16px 32px; font-size: 13px; display: flex; gap: 16px; flex-wrap: wrap; }
 </style>
 </head>
