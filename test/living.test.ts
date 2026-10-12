@@ -39,6 +39,18 @@ describe("living persons", () => {
     ).rejects.toThrow(living);
   });
 
+  it("applies the same rule to a persona of a record", async () => {
+    await expect(
+      rolledBack(client, async () => {
+        const p = await scalar(
+          client,
+          "insert into ddb.person (extracted) values (true) returning id as v",
+        );
+        await addParticipant(client, await newEvent(client, "birth", "2000"), p, "primary");
+      }),
+    ).rejects.toThrow(living);
+  });
+
   it("accepts a person with a known death, whatever the date", async () => {
     await rolledBack(client, async () => {
       const p = await bare();
