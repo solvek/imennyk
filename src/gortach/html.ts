@@ -45,8 +45,8 @@ export function page(locale: Locale, title: string, body: string): string {
   .mark { width: 28px; height: 28px; display: block; }
   .wrap { max-width: 40rem; margin: 0 auto; padding: 8px 16px 48px; }
   .sheet { background: #fff; border: 1px solid #e6e2da; border-radius: 12px; padding: 20px 16px 8px; }
-  h1 { font-size: 32px; font-weight: 500; line-height: 1.15; margin: 0 0 8px; }
-  h2 { color: #5b3a78; font-size: 13px; font-weight: 500; margin: 22px 0 0; }
+  h1 { font-size: 32px; font-weight: 500; line-height: 1.15; margin: 32px 0 8px; }
+  h2 { color: #5b3a78; font-size: 22px; font-weight: 500; line-height: 1.2; margin: 28px 0 8px; }
   .kicker { color: #5b3a78; font-size: 13px; margin: 0 0 8px; }
   .meta, .aside { color: #5e5a55; }
   .meta { margin: 0; }
