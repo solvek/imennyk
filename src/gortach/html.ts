@@ -27,8 +27,18 @@ export function page(locale: Locale, title: string, body: string): string {
   .session { margin-left: auto; display: flex; align-items: center; gap: 12px; font-size: 14px; }
   .session form { margin: 0; }
   .session button { font: inherit; color: #5b3a78; background: none; border: 0; padding: 0; cursor: pointer; }
-  .langs { display: flex; align-items: center; gap: 8px; font-size: 14px; }
-  .langs a[aria-current="true"] { color: inherit; font-weight: 600; text-decoration: none; pointer-events: none; }
+  .langs { position: relative; }
+  .langs summary { display: flex; align-items: center; gap: 6px; padding: 4px 8px; border-radius: 6px; font-weight: 600; letter-spacing: 0.04em; list-style: none; cursor: pointer; user-select: none; }
+  .langs summary::-webkit-details-marker { display: none; }
+  .langs summary::after { content: ""; border: 4px solid transparent; border-top-color: currentColor; border-bottom-width: 0; }
+  .langs summary:hover, .langs[open] summary { background: #eeeae4; }
+  .langs nav { position: absolute; right: 0; top: calc(100% + 4px); z-index: 10; min-width: 10rem; display: flex; flex-direction: column; background: #fff; border: 1px solid #e6e2da; border-radius: 8px; box-shadow: 0 4px 16px rgb(0 0 0 / 0.08); overflow: hidden; }
+  .langs nav a { display: flex; align-items: baseline; gap: 12px; padding: 8px 12px; color: inherit; text-decoration: none; }
+  .langs nav a + a { border-top: 1px solid #eeeae4; }
+  .langs nav a:hover { background: #f7f6f3; }
+  .langs nav a[aria-current="true"] { background: #1c1b19; color: #fff; pointer-events: none; }
+  .langs .code { width: 1.8em; color: #5e5a55; font-size: 12px; font-weight: 600; letter-spacing: 0.06em; }
+  .langs a[aria-current="true"] .code { color: inherit; }
   .google { display: inline-flex; align-items: center; gap: 10px; margin-top: 16px; padding: 10px 16px; border: 1px solid #dadce0; border-radius: 4px; background: #fff; color: #1f1f1f; font-weight: 500; text-decoration: none; }
   .fine { color: #5e5a55; font-size: 13px; }
   .mark { width: 28px; height: 28px; display: block; }
