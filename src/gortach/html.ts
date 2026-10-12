@@ -25,6 +25,7 @@ export function page(locale: Locale, title: string, body: string): string {
   .bar { display: flex; align-items: center; gap: 16px; padding: 14px 16px; }
   .brand { display: flex; align-items: center; gap: 8px; color: inherit; text-decoration: none; font-weight: 500; }
   .session { margin-left: auto; display: flex; align-items: center; gap: 12px; font-size: 14px; }
+  .queue { color: #a3352b; font-weight: 600; }
   .session form { margin: 0; }
   .session button { font: inherit; color: #5b3a78; background: none; border: 0; padding: 0; cursor: pointer; }
   .langs { position: relative; }
