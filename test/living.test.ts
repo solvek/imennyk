@@ -158,4 +158,26 @@ describe("living persons", () => {
       }),
     ).rejects.toThrow(living);
   });
+
+  it("is checked by default, as for automatic writes", async () => {
+    expect(await scalar(client, "select ddb.living_check_enabled()::int as v")).toBe(1);
+  });
+
+  it("is not checked when manual entry turns the check off", async () => {
+    await rolledBack(client, async () => {
+      await client.query("set local grapa.living_check = off");
+      await bare();
+      await newPerson(client, { born: "2000" });
+    });
+  });
+
+  it("is checked again when the check is turned back on", async () => {
+    await expect(
+      rolledBack(client, async () => {
+        await client.query("set local grapa.living_check = off");
+        await client.query("set local grapa.living_check = on");
+        await bare();
+      }),
+    ).rejects.toThrow(living);
+  });
 });
