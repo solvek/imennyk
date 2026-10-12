@@ -39,13 +39,10 @@ describe("living persons", () => {
     ).rejects.toThrow(living);
   });
 
-  it("applies the same rule to a persona of a record", async () => {
+  it("applies the same rule to a person inserted with default values", async () => {
     await expect(
       rolledBack(client, async () => {
-        const p = await scalar(
-          client,
-          "insert into ddb.person (extracted) values (true) returning id as v",
-        );
+        const p = await scalar(client, "insert into ddb.person default values returning id as v");
         await addParticipant(client, await newEvent(client, "birth", "2000"), p, "primary");
       }),
     ).rejects.toThrow(living);
