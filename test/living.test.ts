@@ -102,16 +102,23 @@ describe("living persons", () => {
     ).rejects.toThrow(living);
   });
 
-  it("accepts a partner of a family with an old family event", async () => {
+  it("accepts a partner of an old marriage tie, and a family alone proves nothing", async () => {
     await rolledBack(client, async () => {
       const p = await bare();
-      const f = await newFamily(client, p, null);
       const e = await newEvent(client, "marriage", "1870");
-      await client.query(
-        "insert into ddb.participant (tie, family, role) values ($1, $2, 'primary')",
-        [e, f],
-      );
+      await addParticipant(client, e, p, "groom");
     });
+    await expect(
+      rolledBack(client, async () => {
+        const p = await bare();
+        const f = await newFamily(client, p, null);
+        const e = await newEvent(client, "marriage", "1870");
+        await client.query(
+          "insert into ddb.participant (tie, family, role) values ($1, $2, 'primary')",
+          [e, f],
+        );
+      }),
+    ).rejects.toThrow(living);
   });
 
   it("rejects removing the only evidence", async () => {
