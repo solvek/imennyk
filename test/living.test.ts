@@ -108,7 +108,7 @@ describe("living persons", () => {
       const f = await newFamily(client, p, null);
       const e = await newEvent(client, "marriage", "1870");
       await client.query(
-        "insert into ddb.participant (event, family, role) values ($1, $2, 'primary')",
+        "insert into ddb.participant (tie, family, role) values ($1, $2, 'primary')",
         [e, f],
       );
     });
@@ -132,7 +132,7 @@ describe("living persons", () => {
         await client.query("set constraints all immediate");
         await client.query("set constraints all deferred");
         await client.query(
-          "update ddb.event set date = '1990' where id in (select event from ddb.participant where person = $1)",
+          "update ddb.tie set date = '1990' where id in (select tie from ddb.participant where person = $1)",
           [p],
         );
       }),
@@ -146,7 +146,7 @@ describe("living persons", () => {
         const f = await newFamily(client, p, null);
         const e = await newEvent(client, "marriage", "1870");
         await client.query(
-          "insert into ddb.participant (event, family, role) values ($1, $2, 'primary')",
+          "insert into ddb.participant (tie, family, role) values ($1, $2, 'primary')",
           [e, f],
         );
         await client.query("set constraints all immediate");
