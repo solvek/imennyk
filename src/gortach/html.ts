@@ -66,6 +66,12 @@ export function page(locale: Locale, title: string, body: string): string {
   .copy.copied .idle { display: none; }
   .copy.copied .ok { display: block; }
   .note { white-space: pre-wrap; }
+  .md p { margin: 0 0 8px; }
+  .md p:last-child { margin-bottom: 0; }
+  .md ul, .md ol { margin: 0 0 8px; }
+  .md blockquote { margin: 0 0 8px; padding-left: 10px; border-left: 3px solid #e6e2da; }
+  .md pre, .md code { font-family: ui-monospace, monospace; }
+  .md pre { overflow-x: auto; }
   .report { margin: 12px 0 0; font-size: 14px; }
   .form { margin: 8px 0 16px; }
   .form label { display: block; margin-top: 16px; font-weight: 500; }
