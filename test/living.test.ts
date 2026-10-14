@@ -84,7 +84,7 @@ describe("living persons", () => {
         const p = await bare();
         await addParticipant(
           client,
-          await newEvent(client, "census", `ABT ${String(cutoff)}`),
+          await newEvent(client, "census", `BET ${String(cutoff)} AND ${String(cutoff + 1)}`),
           p,
           "primary",
         );
@@ -132,7 +132,7 @@ describe("living persons", () => {
         await client.query("set constraints all immediate");
         await client.query("set constraints all deferred");
         await client.query(
-          "update ddb.tie set date = '1990' where id in (select tie from ddb.participant where person = $1)",
+          "update ddb.tie set date_from = '1990-01-01', date_to = '1990-12-31' where id in (select tie from ddb.participant where person = $1)",
           [p],
         );
       }),
