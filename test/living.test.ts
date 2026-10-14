@@ -110,13 +110,9 @@ describe("living persons", () => {
     });
     await expect(
       rolledBack(client, async () => {
+        // a family alone proves nothing: the pair is in a tie only when it is a participant
         const p = await bare();
-        const f = await newFamily(client, p, null);
-        const e = await newEvent(client, "marriage", "1870");
-        await client.query(
-          "insert into ddb.participant (tie, family, role) values ($1, $2, 'primary')",
-          [e, f],
-        );
+        await newFamily(client, p, null, [], { type: "unknown" });
       }),
     ).rejects.toThrow(living);
   });
@@ -146,19 +142,14 @@ describe("living persons", () => {
     ).rejects.toThrow(living);
   });
 
-  it("rejects removing a partner from the family that holds their only evidence", async () => {
+  it("rejects removing a partner from the marriage that holds their only evidence", async () => {
     await expect(
       rolledBack(client, async () => {
         const p = await bare();
-        const f = await newFamily(client, p, null);
-        const e = await newEvent(client, "marriage", "1870");
-        await client.query(
-          "insert into ddb.participant (tie, family, role) values ($1, $2, 'primary')",
-          [e, f],
-        );
+        await addParticipant(client, await newEvent(client, "marriage", "1870"), p, "groom");
         await client.query("set constraints all immediate");
         await client.query("set constraints all deferred");
-        await client.query("update ddb.family set partner1 = null where id = $1", [f]);
+        await client.query("delete from ddb.participant where person = $1", [p]);
       }),
     ).rejects.toThrow(living);
   });
