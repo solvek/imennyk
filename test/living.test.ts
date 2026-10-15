@@ -1,4 +1,4 @@
-// No living persons in ddb (docs/genealogy/ddm.md, section 3).
+// No living persons in ddb (docs/genealogy/ddm.md, "Person").
 import type pg from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { connect, rolledBack, scalar } from "../db.ts";
