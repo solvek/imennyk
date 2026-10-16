@@ -47,7 +47,9 @@ ${head}<style>
   .sheet { background: #fff; border: 1px solid #e6e2da; border-radius: 12px; padding: 20px 16px 8px; }
   .place-map { position: relative; margin: 12px 0 16px; border: 1px solid #e6e2da; border-radius: 12px; overflow: hidden; background: #eeeae4; }
   .place-map-canvas { height: 14rem; width: 100%; }
-  .place-map-fs { position: absolute; z-index: 1000; top: 8px; right: 8px; padding: 6px 10px; border: 1px solid #e6e2da; border-radius: 8px; background: #fff; color: #5b3a78; font: inherit; font-size: 13px; font-weight: 500; cursor: pointer; }
+  .place-map .leaflet-bar a.place-map-fs { display: flex; align-items: center; justify-content: center; width: 30px; height: 30px; color: #5b3a78; }
+  .place-map:fullscreen { width: 100%; height: 100%; margin: 0; border: 0; border-radius: 0; }
+  .place-map:fullscreen .place-map-canvas { height: 100%; }
   .place-map-css-fs { position: fixed; inset: 0; z-index: 10000; margin: 0; border-radius: 0; border: 0; }
   .place-map-css-fs .place-map-canvas { height: 100%; }
   html.place-map-lock { overflow: hidden; }
