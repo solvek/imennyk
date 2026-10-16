@@ -10,7 +10,7 @@ export function esc(value: string): string {
     .replaceAll('"', "&quot;");
 }
 
-export function page(locale: Locale, title: string, body: string): string {
+export function page(locale: Locale, title: string, body: string, head = ""): string {
   return `<!doctype html>
 <html lang="${locale}">
 <head>
@@ -19,7 +19,7 @@ export function page(locale: Locale, title: string, body: string): string {
 <title>${esc(title)}</title>
 <link rel="icon" href="/favicon.ico" sizes="32x32">
 <link rel="icon" href="/logo.svg" type="image/svg+xml">
-<style>
+${head}<style>
   body { margin: 0; background: #f7f6f3; color: #1c1b19; font: 16px/1.5 ui-sans-serif, system-ui, sans-serif; }
   a { color: #5b3a78; }
   .bar { display: flex; align-items: center; gap: 16px; padding: 14px 16px; }
@@ -45,6 +45,12 @@ export function page(locale: Locale, title: string, body: string): string {
   .mark { width: 28px; height: 28px; display: block; }
   .wrap { max-width: 40rem; margin: 0 auto; padding: 8px 16px 48px; }
   .sheet { background: #fff; border: 1px solid #e6e2da; border-radius: 12px; padding: 20px 16px 8px; }
+  .place-map { position: relative; margin: 12px 0 16px; border: 1px solid #e6e2da; border-radius: 12px; overflow: hidden; background: #eeeae4; }
+  .place-map-canvas { height: 14rem; width: 100%; }
+  .place-map-fs { position: absolute; z-index: 1000; top: 8px; right: 8px; padding: 6px 10px; border: 1px solid #e6e2da; border-radius: 8px; background: #fff; color: #5b3a78; font: inherit; font-size: 13px; font-weight: 500; cursor: pointer; }
+  .place-map-css-fs { position: fixed; inset: 0; z-index: 10000; margin: 0; border-radius: 0; border: 0; }
+  .place-map-css-fs .place-map-canvas { height: 100%; }
+  html.place-map-lock { overflow: hidden; }
   h1 { font-size: 32px; font-weight: 500; line-height: 1.15; margin: 32px 0 8px; }
   h2 { color: #5b3a78; font-size: 22px; font-weight: 500; line-height: 1.2; margin: 28px 0 8px; }
   .kicker { color: #5b3a78; font-size: 13px; margin: 0 0 8px; }
