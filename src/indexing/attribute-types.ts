@@ -133,9 +133,7 @@ export function attributeTypeById(id: number): (typeof ATTRIBUTE_TYPES)[number] 
 }
 
 /** The type with this code, or undefined when the code is not in the vocabulary. */
-export function attributeTypeByCode(
-  code: string,
-): (typeof ATTRIBUTE_TYPES)[number] | undefined {
+export function attributeTypeByCode(code: string): (typeof ATTRIBUTE_TYPES)[number] | undefined {
   return BY_CODE.get(code);
 }
 
