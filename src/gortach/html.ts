@@ -74,7 +74,7 @@ ${head}<style>
   .google { display: inline-flex; align-items: center; gap: 10px; margin-top: 16px; padding: 10px 16px; border: 1px solid #dadce0; border-radius: 4px; background: #fff; color: #1f1f1f; font-weight: 500; text-decoration: none; }
   .fine { color: var(--muted); font-size: 13px; }
   .mark { width: 28px; height: 28px; display: block; }
-  .wrap { max-width: 40rem; margin: 0 auto; padding: 0 24px 48px; }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 0 24px 48px; }
   .sheet { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 20px 16px 8px; }
   .place-map { position: relative; margin: 12px 0 16px; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: var(--soft); }
   .place-map-canvas { height: 14rem; width: 100%; }
@@ -124,7 +124,6 @@ ${head}<style>
   .foot { margin: 48px 0 0; padding: 24px 0 0; border-top: 1px solid var(--line); font-size: 13px; display: flex; gap: 8px 22px; flex-wrap: wrap; }
   .foot .credit { margin-right: auto; }
   .sr { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
-  .home .wrap { max-width: 1080px; }
   .home .foot { margin-top: 72px; }
   .home .hero { display: grid; grid-template-columns: 1.15fr 0.85fr; gap: 56px; align-items: center; padding: 56px 0 24px; }
   .home .eyebrow { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin: 0 0 20px; font: 12px/1.4 var(--mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
