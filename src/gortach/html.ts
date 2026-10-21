@@ -97,7 +97,7 @@ ${head}<style>
   ol, ul { margin: 8px 0 0; padding-left: 1.2rem; }
   code { font-family: var(--mono); }
   .shot { margin: 12px 0 0; }
-  .shot img { display: block; width: 100%; height: auto; border: 1px solid var(--line); border-radius: 12px; background: var(--card); }
+  .shot img { display: block; max-width: 100%; height: auto; border: 1px solid var(--line); border-radius: 12px; background: var(--card); }
   .shot figcaption { color: var(--muted); font-size: 13px; margin-top: 6px; }
   .addr { display: inline-flex; align-items: center; gap: 4px; }
   .copy { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; padding: 0; border: 0; border-radius: 6px; background: transparent; color: var(--grape); cursor: pointer; }
