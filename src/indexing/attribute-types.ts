@@ -12,7 +12,7 @@ export interface AttributeTypeDef {
   readonly format: AttributeFormat;
 }
 
-/** Fixed ids 1–17; do not renumber. */
+/** Fixed ids 1–18; do not renumber. */
 export const ATTRIBUTE_TYPES = [
   {
     id: 1,
@@ -114,6 +114,12 @@ export const ATTRIBUTE_TYPES = [
     id: 17,
     code: "index",
     label: { uk: "Індекс", en: "Index" },
+    format: "text",
+  },
+  {
+    id: 18,
+    code: "marital",
+    label: { uk: "Сімейний стан", en: "Marital status" },
     format: "text",
   },
 ] as const satisfies readonly AttributeTypeDef[];
