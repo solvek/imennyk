@@ -64,18 +64,8 @@ export const PLACE_TYPES = [
 ] as const satisfies readonly DdbPlaceType[];
 
 export const BOX_ORIGINS = ["crop", "htr_line", "manual"] as const;
-export const DOUBT_ELEMENTS = [
-  "surname",
-  "given",
-  "patronymic",
-  "age",
-  "gender",
-  "place",
-  "tie",
-  "other",
-] as const;
+/** A doubt is only about a word that was read: a name part or the name of a place. */
+export const DOUBT_ELEMENTS = ["surname", "given", "patronymic", "place"] as const;
 
 /** States of review shared by doubts and places of the sample. */
 export const REVIEW_STATUSES = ["open", "confirmed", "fixed", "unknown"] as const;
-/** A doubt about a tie can also end with a tie added or deleted. */
-export const DOUBT_STATUSES = [...REVIEW_STATUSES, "tie_added", "tie_deleted"] as const;

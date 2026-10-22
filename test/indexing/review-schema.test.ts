@@ -1,7 +1,10 @@
-import type { DatabaseSync } from "node:sqlite";
+import { copyFileSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { describe, expect, it } from "vitest";
-import { openCaseDb } from "../../../src/genealogy/indexing/db.ts";
-import { DOUBT_STATUSES, REVIEW_STATUSES } from "../../../src/genealogy/indexing/enums.ts";
+import { migrate, openCaseDb } from "../../../src/genealogy/indexing/db.ts";
+import { DOUBT_ELEMENTS, REVIEW_STATUSES } from "../../../src/genealogy/indexing/enums.ts";
 import { namePart } from "../../../src/genealogy/indexing/reading.ts";
 
 function seeded(): DatabaseSync {
@@ -39,38 +42,56 @@ const NAME_VALUES = [
   "Заицевскій",
 ];
 
-function checkedStatuses(db: DatabaseSync, table: string): string[] {
+function checkedList(db: DatabaseSync, table: string, column: string): string[] {
   const row = db.prepare("select sql from sqlite_master where name = ?").get(table);
   const sql = String(row?.sql);
-  const list = /status\s+text[^,]*?check\s*\(status in \(([^)]*)\)\)/i.exec(sql)?.[1] ?? "";
+  const pattern = new RegExp(
+    `${column}\\s+text[^,]*?check\\s*\\(${column} in \\(([^)]*)\\)\\)`,
+    "i",
+  );
+  const list = pattern.exec(sql)?.[1] ?? "";
   return [...list.matchAll(/'([a-z_]+)'/g)].map((m) => m[1] ?? "");
 }
 
 describe("review columns", () => {
-  it("has CHECK lists equal to the status lists in enums.ts", () => {
+  it("has CHECK lists equal to the lists in enums.ts", () => {
     const db = seeded();
-    expect(checkedStatuses(db, "doubt")).toEqual([...DOUBT_STATUSES]);
-    expect(checkedStatuses(db, "sample")).toEqual([...REVIEW_STATUSES]);
+    expect(checkedList(db, "doubt", "status")).toEqual([...REVIEW_STATUSES]);
+    expect(checkedList(db, "sample", "status")).toEqual([...REVIEW_STATUSES]);
+    expect(checkedList(db, "doubt", "element")).toEqual([...DOUBT_ELEMENTS]);
   });
 
   it("restricts the states of doubts and of the sample to the lists in enums.ts", () => {
     const db = seeded();
-    for (const status of DOUBT_STATUSES) {
-      expect(accepts(db, `update doubt set status = '${status}' where id = 1`)).toBe(true);
-    }
-    expect(accepts(db, "update doubt set status = 'bogus' where id = 1")).toBe(false);
     for (const status of REVIEW_STATUSES) {
+      expect(accepts(db, `update doubt set status = '${status}' where id = 1`)).toBe(true);
       expect(
         accepts(db, `update sample set status = '${status}', read_text = 'Іваненко' where id = 1`),
       ).toBe(true);
     }
-    expect(accepts(db, "update sample set status = 'tie_added' where id = 1")).toBe(false);
-    expect(accepts(db, "update sample set status = 'bogus' where id = 1")).toBe(false);
+    for (const status of ["tie_added", "tie_deleted", "bogus"]) {
+      expect(accepts(db, `update doubt set status = '${status}' where id = 1`)).toBe(false);
+      expect(accepts(db, `update sample set status = '${status}' where id = 1`)).toBe(false);
+    }
+  });
+
+  it("takes doubts about words only", () => {
+    const db = seeded();
+    for (const element of DOUBT_ELEMENTS) {
+      expect(
+        accepts(db, `insert into doubt (run_id, scan_id, element) values (1, 1, '${element}')`),
+      ).toBe(true);
+    }
+    for (const element of ["tie", "age", "gender", "other"]) {
+      expect(
+        accepts(db, `insert into doubt (run_id, scan_id, element) values (1, 1, '${element}')`),
+      ).toBe(false);
+    }
   });
 
   it("opens new doubts", () => {
     const db = seeded();
-    db.exec("insert into doubt (run_id, scan_id, element) values (1, 1, 'age')");
+    db.exec("insert into doubt (run_id, scan_id, element) values (1, 1, 'place')");
     const rows = db.prepare("select distinct status from doubt").all();
     expect(rows).toEqual([{ status: "open" }]);
   });
@@ -90,6 +111,44 @@ describe("review columns", () => {
     expect(accepts(db, "update sample set read_text = 'Іваненко', note = 'n' where id = 1")).toBe(
       true,
     );
+  });
+});
+
+describe("migration to doubts about words", () => {
+  const MIGRATIONS = join(import.meta.dirname, "../../../src/genealogy/indexing/migrations");
+
+  it("drops doubts about anything but a word and keeps the rest with their review", () => {
+    const dir = mkdtempSync(join(tmpdir(), "indexing-0008-"));
+    for (const file of readdirSync(MIGRATIONS).filter((name) => /^000[1-7]_/.test(name))) {
+      copyFileSync(join(MIGRATIONS, file), join(dir, file));
+    }
+    const db = new DatabaseSync(":memory:");
+    db.exec("pragma foreign_keys = on");
+    migrate(db, dir);
+    db.exec(`
+      insert into scan (id, name, url, width, height) values (1, 'n_1', 'u', 1000, 1000);
+      insert into run (id, started_at, model) values (1, '2026-01-01T00:00:00Z', 'm');
+      insert into person (id, run_id, scan_id, given) values (1, 1, 1, 'Ганна'), (2, 1, 1, 'Іван');
+      insert into tie (run_id, scan_id, person_id, other_id, type) values (1, 1, 1, 2, 'child');
+      insert into doubt (id, run_id, scan_id, element, person_id, read_text, status, resolution)
+      values (1, 1, 1, 'given', 1, 'Ганна', 'fixed', 'checked'),
+             (2, 1, 1, 'tie', 1, null, 'tie_added', null),
+             (3, 1, 1, 'age', 1, '57', 'unknown', null),
+             (4, 1, 1, 'other', null, null, 'open', null),
+             (5, 1, 1, 'place', null, 'Селець', 'open', null);
+    `);
+    migrate(db);
+    expect(
+      db.prepare("select id, element, status, resolution from doubt order by id").all(),
+    ).toEqual([
+      { id: 1, element: "given", status: "fixed", resolution: "checked" },
+      { id: 5, element: "place", status: "open", resolution: null },
+    ]);
+    expect(db.prepare("select count(*) as n from tie").get()).toEqual({ n: 1 });
+    expect(accepts(db, "insert into doubt (run_id, scan_id, element) values (1, 1, 'tie')")).toBe(
+      false,
+    );
+    rmSync(dir, { recursive: true });
   });
 });
 

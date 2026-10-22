@@ -227,6 +227,17 @@ describe("doubts and scan attributes", () => {
     ).toBe(500);
   });
 
+  it.each(["tie", "age", "gender", "other"])(
+    "rejects a doubt about «%s»: only words",
+    (element) => {
+      const { db, run } = setup();
+      const bad = { ...reading, doubts: [{ element, person: "a", note: "not a word" }] };
+      expect(() => ingestReading(db, run, bad)).toThrow();
+      expect(n(db, "doubt")).toBe(0);
+      expect(n(db, "person")).toBe(0);
+    },
+  );
+
   it("rejects a doubt about a name the person does not have", () => {
     const { db, run } = setup();
     const bad = { ...reading, doubts: [{ element: "patronymic", person: "b", read: "x" }] };

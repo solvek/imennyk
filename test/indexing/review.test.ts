@@ -8,8 +8,6 @@ import { z } from "zod";
 import { openCaseDb } from "../../../src/genealogy/indexing/db.ts";
 import { ingestReading } from "../../../src/genealogy/indexing/ingest.ts";
 import {
-  addTieForDoubt,
-  deleteTieForDoubt,
   errorRate,
   fixName,
   listCases,
@@ -20,7 +18,6 @@ import {
   reopen,
   reviewTone,
   setStatus,
-  tieCandidates,
   type ItemRef,
   type ReviewSet,
 } from "../../../src/genealogy/indexing/review.ts";
@@ -43,7 +40,7 @@ interface Fixture {
   readonly run: number;
 }
 
-/** Two scans, three households, six doubts and a sample of four surnames; all names invented. */
+/** Two scans, two households, six doubts and a sample of four surnames; all names invented. */
 function fixture(): Fixture {
   const db = openCaseDb(":memory:");
   db.exec(`
@@ -54,13 +51,15 @@ function fixture(): Fixture {
   ingestReading(db, run, {
     scan: "n_1",
     year: 1912,
+    places: [{ key: "v", name: "Селець", type: "settlement", box: box(5) }],
     households: [
       {
         key: "h1",
+        place: "v",
         members: [
           { key: "t", head: true, given: "Тарас", surname: "Петренко", box: box(10) },
           { key: "s", given: "Соломонія", box: box(30) },
-          { key: "c", given: "Петро", surname: "Петренко", box: box(50) },
+          { key: "c", given: "Петро", patronymic: "Тарасовъ", surname: "Петренко", box: box(50) },
         ],
         ties: [{ person: "c", other: "t", type: "child" }],
       },
@@ -68,9 +67,8 @@ function fixture(): Fixture {
     doubts: [
       { element: "surname", person: "t", read: "Петренко", variants: "Петренко", box: box(10) },
       { element: "given", person: "s", read: "Соломонія", box: box(30) },
-      { element: "tie", person: "s", read: "Соломонія", note: "no tie", box: box(30) },
-      { element: "tie", person: "c", read: "Петро", box: box(50) },
-      { element: "age", person: "s", read: "57", box: box(30) },
+      { element: "patronymic", person: "c", read: "Тарасовъ", box: box(50) },
+      { element: "place", place: "v", read: "Селець", box: box(5) },
       { element: "surname", person: "t", read: "Петренко" },
     ],
   });
@@ -86,7 +84,7 @@ function fixture(): Fixture {
         ],
       },
     ],
-    doubts: [{ element: "tie", person: "x", read: "Ганна", box: box(30) }],
+    doubts: [{ element: "given", person: "x", read: "Ганна", box: box(30) }],
   });
   buildSample(db, "seed", 4);
   return { db, run };
@@ -105,6 +103,9 @@ const doubtOf = (db: DatabaseSync, element: string, person: string): number =>
     element,
     person,
   );
+
+const placeDoubt = (db: DatabaseSync): number =>
+  id(db, "select id from doubt where element = 'place'");
 
 function personField(db: DatabaseSync, personId: number, column: string): unknown {
   return db.prepare(`select ${column} as v from person where id = ?`).get(personId)?.v;
@@ -134,7 +135,7 @@ describe("listItems and progress", () => {
     const first = doubtOf(db, "surname", "Тарас");
     setStatus(db, { set: "doubt", id: first }, "confirmed");
     const items = listItems(db, "doubt");
-    expect(items).toHaveLength(7);
+    expect(items).toHaveLength(6);
     expect(items.at(-1)?.id).toBe(first);
     const surname = items.find((item) => item.id === first);
     expect(surname).toMatchObject({
@@ -174,32 +175,25 @@ describe("listItems and progress", () => {
 
   it("filters by element and state", () => {
     const { db } = fixture();
-    expect(listItems(db, "doubt", { element: "tie" })).toHaveLength(3);
-    setStatus(db, { set: "doubt", id: doubtOf(db, "age", "Соломонія") }, "unknown", "faded");
+    expect(listItems(db, "doubt", { element: "given" })).toHaveLength(2);
+    setStatus(db, { set: "doubt", id: placeDoubt(db) }, "unknown", "faded");
     expect(listItems(db, "doubt", { status: "unknown" })).toHaveLength(1);
-    expect(listItems(db, "doubt", { status: "open", element: "age" })).toHaveLength(0);
-  });
-
-  it("shows the ties of the person for a doubt about a tie", () => {
-    const { db } = fixture();
-    const items = listItems(db, "doubt", { element: "tie" });
-    const withTie = items.find((item) => item.ties?.length === 1);
-    expect(withTie?.ties?.[0]).toMatchObject({
-      type: "child",
-      otherName: "Тарас Петренко",
-      outgoing: true,
-    });
-    expect(items.filter((item) => item.ties?.length === 0)).toHaveLength(2);
-    expect(listItems(db, "doubt", { element: "age" })[0]?.ties).toBeUndefined();
+    expect(listItems(db, "doubt", { status: "open", element: "place" })).toHaveLength(0);
   });
 
   it("counts progress overall and by element", () => {
     const { db } = fixture();
-    setStatus(db, { set: "doubt", id: doubtOf(db, "age", "Соломонія") }, "confirmed");
+    setStatus(db, { set: "doubt", id: placeDoubt(db) }, "confirmed");
     const result = progress(db, "doubt");
-    expect(result).toMatchObject({ total: 7, reviewed: 1 });
-    expect(result.byElement.find((row) => row.element === "age")).toEqual({
-      element: "age",
+    expect(result).toMatchObject({ total: 6, reviewed: 1 });
+    expect(result.byElement.map((row) => row.element)).toEqual([
+      "given",
+      "patronymic",
+      "place",
+      "surname",
+    ]);
+    expect(result.byElement.find((row) => row.element === "place")).toEqual({
+      element: "place",
       total: 1,
       reviewed: 1,
     });
@@ -252,18 +246,22 @@ describe.each(SETS)("fixName in the %s set", (set) => {
 });
 
 describe("fixName limits", () => {
-  it("refuses doubts that are not about a name", () => {
+  it("refuses a doubt about a place: only name parts are fixed by a value", () => {
     const { db } = fixture();
-    for (const [element, person] of [
-      ["age", "Соломонія"],
-      ["tie", "Соломонія"],
-    ] as const) {
-      const ref = { set: "doubt", id: doubtOf(db, element, person) } as const;
-      expect(() => {
-        fixName(db, ref, "Щось");
-      }).toThrow(/can be fixed/);
-      expect(listItems(db, "doubt").find((item) => item.id === ref.id)?.status).toBe("open");
-    }
+    const ref = { set: "doubt", id: placeDoubt(db) } as const;
+    expect(listItems(db, "doubt").find((item) => item.id === ref.id)?.editable).toBe(false);
+    expect(() => {
+      fixName(db, ref, "Щось");
+    }).toThrow(/can be fixed/);
+    expect(listItems(db, "doubt").find((item) => item.id === ref.id)?.status).toBe("open");
+  });
+
+  it("changes the patronymic of a doubt about it", () => {
+    const { db } = fixture();
+    fixName(db, { set: "doubt", id: doubtOf(db, "patronymic", "Петро") }, "Тарасовичъ");
+    expect(db.prepare("select patronymic from person where given = 'Петро'").get()).toEqual({
+      patronymic: "Тарасовичъ",
+    });
   });
 
   it("changes the given name of a doubt about it", () => {
@@ -355,130 +353,12 @@ describe("the reading of a sample place", () => {
   });
 });
 
-describe("ties", () => {
-  it("offers people of the scan and the one before, with the nearest head as default", () => {
-    const { db } = fixture();
-    const doubt = doubtOf(db, "tie", "Ганна");
-    const { candidates, defaultId } = tieCandidates(db, doubt);
-    const names = candidates.map((candidate) => candidate.name);
-    expect(names).toContain("Тарас Петренко");
-    expect(names).toContain("Іван Шевчук");
-    expect(names).not.toContain("Ганна Шевчук");
-    expect(defaultId).toBe(id(db, "select id from person where given = 'Іван'"));
-    expect(candidates.find((candidate) => candidate.personId === defaultId)).toMatchObject({
-      isHead: true,
-    });
-  });
-
-  it("takes the head of the earlier household for a person at the start of a scan", () => {
-    const { db } = fixture();
-    const { defaultId } = tieCandidates(db, doubtOf(db, "tie", "Соломонія"));
-    expect(defaultId).toBe(id(db, "select id from person where given = 'Тарас'"));
-  });
-
-  it("adds a tie in reading direction with the event of the head's household", () => {
-    const { db } = fixture();
-    const doubt = doubtOf(db, "tie", "Соломонія");
-    const head = id(db, "select id from person where given = 'Тарас'");
-    addTieForDoubt(db, doubt, { otherId: head, type: "child" }, "daughter");
-    const tie = db
-      .prepare(
-        "select * from tie where person_id = (select id from person where given = 'Соломонія')",
-      )
-      .get();
-    expect(tie).toMatchObject({
-      other_id: head,
-      type: "child",
-      box_id: expect.any(Number) as unknown,
-    });
-    expect(tie?.event_id).toBe(
-      id(db, "select id from event where main_person_id = ? and type = 'confession'", String(head)),
-    );
-    expect(listItems(db, "doubt").find((item) => item.id === doubt)).toMatchObject({
-      status: "tie_added",
-      note: "daughter",
-    });
-  });
-
-  it("stores relation, up and down for kin", () => {
-    const { db } = fixture();
-    const head = id(db, "select id from person where given = 'Тарас'");
-    addTieForDoubt(db, doubtOf(db, "tie", "Соломонія"), {
-      otherId: head,
-      type: "kin",
-      relation: "cousin",
-      up: 2,
-      down: 2,
-    });
-    expect(db.prepare("select relation, up, down from tie where type = 'kin'").get()).toMatchObject(
-      {
-        relation: "cousin",
-        up: 2,
-        down: 2,
-      },
-    );
-  });
-
-  it("refuses a tie to the person themselves, an unknown type and a far-away person", () => {
-    const { db } = fixture();
-    const doubt = doubtOf(db, "tie", "Соломонія");
-    const self = id(db, "select id from person where given = 'Соломонія'");
-    const ties = db.prepare("select count(*) as n from tie").get()?.n;
-    expect(() => {
-      addTieForDoubt(db, doubt, { otherId: self, type: "child" });
-    }).toThrow(/themselves/);
-    expect(() => {
-      addTieForDoubt(db, doubt, { otherId: self + 1, type: "cousin" });
-    }).toThrow(/unknown tie type/);
-    expect(() => {
-      addTieForDoubt(db, doubt, { otherId: 9999, type: "child" });
-    }).toThrow(/scan/);
-    expect(db.prepare("select count(*) as n from tie").get()?.n).toBe(ties);
-    expect(listItems(db, "doubt").find((item) => item.id === doubt)?.status).toBe("open");
-  });
-
-  it("refuses a tie for a doubt that is not about a tie", () => {
-    const { db } = fixture();
-    expect(() => {
-      addTieForDoubt(db, doubtOf(db, "age", "Соломонія"), { otherId: 1, type: "child" });
-    }).toThrow(/about a tie/);
-  });
-
-  it("deletes a tie with its attributes and closes the doubt", () => {
-    const { db } = fixture();
-    const doubt = doubtOf(db, "tie", "Петро");
-    const tieId = id(db, "select id from tie");
-    db.prepare(
-      "insert into attribute (run_id, scan_id, type, tie_id, value) values (1, 1, 'note', ?, 'adopted')",
-    ).run(tieId);
-    deleteTieForDoubt(db, doubt, tieId);
-    expect(db.prepare("select count(*) as n from tie").get()?.n).toBe(0);
-    expect(
-      db.prepare("select count(*) as n from attribute where tie_id is not null").get()?.n,
-    ).toBe(0);
-    expect(listItems(db, "doubt").find((item) => item.id === doubt)?.status).toBe("tie_deleted");
-  });
-
-  it("refuses to delete the tie of another person", () => {
-    const { db } = fixture();
-    const tieId = id(db, "select id from tie");
-    const doubt = doubtOf(db, "tie", "Ганна");
-    expect(() => {
-      deleteTieForDoubt(db, doubt, tieId);
-    }).toThrow(/does not belong/);
-    expect(db.prepare("select count(*) as n from tie").get()?.n).toBe(1);
-    expect(listItems(db, "doubt").find((item) => item.id === doubt)?.status).toBe("open");
-  });
-});
-
 describe("reviewTone", () => {
   it.each([
     ["open", null],
     ["confirmed", "ok"],
     ["fixed", "error"],
     ["unknown", "error"],
-    ["tie_added", "error"],
-    ["tie_deleted", "error"],
   ] as const)("gives %s the tone %s", (status, tone) => {
     expect(reviewTone(status)).toBe(tone);
   });
@@ -592,7 +472,7 @@ describe("writeRunErrorRate", () => {
     expect(parse(readFileSync(path, "utf8"))).toMatchObject({
       model: "test-model",
       wer: 25,
-      doubts: 7,
+      doubts: 6,
     });
   });
 });

@@ -1,10 +1,10 @@
 // Review of a case by a human: doubts and places of the sample are one kind of item with one set
-// of states; only ties (doubts) and the error rate (sample) are specific to one set.
+// of states; only the error rate is specific to the sample.
 import { readdirSync } from "node:fs";
 import type { DatabaseSync } from "node:sqlite";
 import { z } from "zod";
 import { inTransaction, selectRows } from "./db.ts";
-import { DOUBT_STATUSES, TIE_TYPES } from "./enums.ts";
+import { REVIEW_STATUSES } from "./enums.ts";
 import { namePart } from "./reading.ts";
 import { readRunErrorRate, writeRunErrorRate, type RunErrorRate } from "./run.ts";
 
@@ -16,7 +16,7 @@ export interface ItemRef {
   readonly id: number;
 }
 
-export type ReviewStatus = (typeof DOUBT_STATUSES)[number];
+export type ReviewStatus = (typeof REVIEW_STATUSES)[number];
 export type ReviewTone = "ok" | "error";
 
 const NAME_COLUMNS = ["given", "patronymic", "surname"] as const;
@@ -39,18 +39,6 @@ export function listCases(root: string): string[] {
     .filter((entry) => entry.isDirectory())
     .map((entry) => entry.name)
     .toSorted();
-}
-
-export interface TieInfo {
-  readonly id: number;
-  readonly otherId: number;
-  readonly otherName: string;
-  /** True when the person of the item is the `person` of the tie (reading direction). */
-  readonly outgoing: boolean;
-  readonly type: string;
-  readonly relation: string | null;
-  readonly up: number | null;
-  readonly down: number | null;
 }
 
 export interface ReviewItem {
@@ -80,8 +68,6 @@ export interface ReviewItem {
   /** The name part now in the database, when the item can be fixed by typing a value. */
   readonly currentValue: string | null;
   readonly editable: boolean;
-  /** Ties of the person in the run, for a doubt about a tie. */
-  readonly ties: readonly TieInfo[] | undefined;
 }
 
 export interface ItemFilter {
@@ -134,64 +120,13 @@ function itemSql(set: ReviewSet): string {
   return set === "doubt" ? DOUBT_SQL : SAMPLE_SQL;
 }
 
-const tieRow = z.object({
-  id: z.number(),
-  person_id: z.number(),
-  other_id: z.number(),
-  type: z.string(),
-  relation: z.string().nullable(),
-  up: z.number().nullable(),
-  down: z.number().nullable(),
-  given: z.string().nullable(),
-  patronymic: z.string().nullable(),
-  surname: z.string().nullable(),
-});
-
-/** «Given Patronymic Surname» of a person, or the id when nothing is read. */
-function displayName(
-  id: number,
-  parts: { given: string | null; patronymic: string | null; surname: string | null },
-): string {
-  const name = [parts.given, parts.patronymic, parts.surname]
-    .filter((part): part is string => part !== null)
-    .join(" ");
-  return name === "" ? `#${String(id)}` : name;
-}
-
-function tiesOf(db: DatabaseSync, personId: number, runId: number): TieInfo[] {
-  return selectRows(
-    db,
-    tieRow,
-    `select t.id, t.person_id, t.other_id, t.type, t.relation, t.up, t.down,
-            o.given, o.patronymic, o.surname
-       from tie t
-       join person o on o.id = case when t.person_id = ?1 then t.other_id else t.person_id end
-      where t.run_id = ?2 and (t.person_id = ?1 or t.other_id = ?1)
-      order by t.id`,
-    [personId, runId],
-  ).map((row) => {
-    const outgoing = row.person_id === personId;
-    const otherId = outgoing ? row.other_id : row.person_id;
-    return {
-      id: row.id,
-      otherId,
-      otherName: displayName(otherId, row),
-      outgoing,
-      type: row.type,
-      relation: row.relation,
-      up: row.up,
-      down: row.down,
-    };
-  });
-}
-
 function toStatus(value: string): ReviewStatus {
-  const status = DOUBT_STATUSES.find((candidate) => candidate === value);
+  const status = REVIEW_STATUSES.find((candidate) => candidate === value);
   if (status === undefined) throw new Error(`unknown review status «${value}»`);
   return status;
 }
 
-function toItem(db: DatabaseSync, set: ReviewSet, row: z.infer<typeof itemRow>): ReviewItem {
+function toItem(set: ReviewSet, row: z.infer<typeof itemRow>): ReviewItem {
   const editable = row.person_id !== null && (set === "sample" || isNameColumn(row.element));
   return {
     set,
@@ -214,10 +149,6 @@ function toItem(db: DatabaseSync, set: ReviewSet, row: z.infer<typeof itemRow>):
     note: row.note,
     currentValue: row.current_value,
     editable,
-    ties:
-      set === "doubt" && row.element === "tie" && row.person_id !== null
-        ? tiesOf(db, row.person_id, row.run_id)
-        : undefined,
   };
 }
 
@@ -239,14 +170,14 @@ export function listItems(db: DatabaseSync, set: ReviewSet, filter: ItemFilter =
   const sql = `${itemSql(set)}
     ${where.length > 0 ? `where ${where.join(" and ")}` : ""}
     order by (${statusColumn} <> 'open'), ${idColumn}`;
-  return selectRows(db, itemRow, sql, params).map((row) => toItem(db, set, row));
+  return selectRows(db, itemRow, sql, params).map((row) => toItem(set, row));
 }
 
 function getItem(db: DatabaseSync, ref: ItemRef): { item: ReviewItem; runId: number } {
   const idColumn = ref.set === "doubt" ? "d.id" : "sm.rank";
   const row = selectRows(db, itemRow, `${itemSql(ref.set)} where ${idColumn} = ?`, [ref.id])[0];
   if (row === undefined) throw new Error(`no ${ref.set} ${String(ref.id)}`);
-  return { item: toItem(db, ref.set, row), runId: row.run_id };
+  return { item: toItem(ref.set, row), runId: row.run_id };
 }
 
 /** One item by its address, or undefined when there is none. */
@@ -356,160 +287,6 @@ export function fixName(db: DatabaseSync, ref: ItemRef, value: string, note?: st
       "update name_mention set text = ? where person_id = ? and kind = ? and run_id = ?",
     ).run(parsed.data, item.personId, column, runId);
     writeStatus(db, ref, "fixed", cleanNote(note));
-  });
-}
-
-// ---- Ties (doubts about a tie)
-
-const personRow = z.object({
-  id: z.number(),
-  scan_id: z.number(),
-  given: z.string().nullable(),
-  patronymic: z.string().nullable(),
-  surname: z.string().nullable(),
-});
-
-export interface TieCandidate {
-  readonly personId: number;
-  readonly name: string;
-  readonly isHead: boolean;
-  /** The household event of this person when they are its head. */
-  readonly eventId: number | null;
-}
-
-export interface TieCandidates {
-  readonly candidates: readonly TieCandidate[];
-  /** The head of the nearest household before the person of the doubt. */
-  readonly defaultId: number | null;
-}
-
-interface TieDoubt {
-  readonly personId: number;
-  readonly runId: number;
-  readonly scanId: number;
-  readonly boxId: number | null;
-}
-
-const doubtRow = z.object({
-  person_id: z.number().nullable(),
-  run_id: z.number(),
-  scan_id: z.number(),
-  box_id: z.number().nullable(),
-  element: z.string(),
-});
-
-function tieDoubt(db: DatabaseSync, doubtId: number): TieDoubt {
-  const row = selectRows(db, doubtRow, "select * from doubt where id = ?", [doubtId])[0];
-  if (row === undefined) throw new Error(`no doubt ${String(doubtId)}`);
-  if (row.element !== "tie" || row.person_id === null) {
-    throw new Error("only a doubt about a tie of a person can have a tie added or deleted");
-  }
-  return { personId: row.person_id, runId: row.run_id, scanId: row.scan_id, boxId: row.box_id };
-}
-
-/** People of the run on the scan of the doubt and on the scan before it (ids follow scan order). */
-export function tieCandidates(db: DatabaseSync, doubtId: number): TieCandidates {
-  const doubt = tieDoubt(db, doubtId);
-  const previous = selectRows(
-    db,
-    z.object({ id: z.number() }),
-    "select id from scan where id < ? order by id desc limit 1",
-    [doubt.scanId],
-  )[0]?.id;
-  const people = selectRows(
-    db,
-    personRow,
-    `select id, scan_id, given, patronymic, surname from person
-      where run_id = ? and id <> ? and scan_id in (?, ?) order by id`,
-    [doubt.runId, doubt.personId, doubt.scanId, previous ?? doubt.scanId],
-  );
-  const heads = new Map(
-    selectRows(
-      db,
-      z.object({ id: z.number(), main_person_id: z.number() }),
-      `select min(id) as id, main_person_id from event
-        where run_id = ? and type = 'confession' and main_person_id is not null
-        group by main_person_id`,
-      [doubt.runId],
-    ).map((row) => [row.main_person_id, row.id]),
-  );
-  const candidates = people.map((person) => ({
-    personId: person.id,
-    name: displayName(person.id, person),
-    isHead: heads.has(person.id),
-    eventId: heads.get(person.id) ?? null,
-  }));
-  const defaultId =
-    candidates.filter((candidate) => candidate.isHead && candidate.personId < doubt.personId).at(-1)
-      ?.personId ?? null;
-  return { candidates, defaultId };
-}
-
-export interface NewTie {
-  readonly otherId: number;
-  readonly type: string;
-  readonly relation?: string | undefined;
-  readonly up?: number | undefined;
-  readonly down?: number | undefined;
-}
-
-/** Adds a tie from the person of the doubt (reading direction) and closes the doubt. */
-export function addTieForDoubt(
-  db: DatabaseSync,
-  doubtId: number,
-  tie: NewTie,
-  note?: string,
-): void {
-  const doubt = tieDoubt(db, doubtId);
-  if (tie.otherId === doubt.personId) throw new Error("a person cannot be tied to themselves");
-  if (!TIE_TYPES.some((type) => type === tie.type)) {
-    throw new Error(`unknown tie type «${tie.type}»`);
-  }
-  const other = tieCandidates(db, doubtId).candidates.find(
-    (candidate) => candidate.personId === tie.otherId,
-  );
-  if (other === undefined) {
-    throw new Error("the other person has to be from this scan or the one before it");
-  }
-  inTransaction(db, () => {
-    db.prepare(
-      `insert into tie (run_id, scan_id, box_id, person_id, other_id, type, relation, up, down, event_id)
-       values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    ).run(
-      doubt.runId,
-      doubt.scanId,
-      doubt.boxId,
-      doubt.personId,
-      tie.otherId,
-      tie.type,
-      tie.relation ?? null,
-      tie.up ?? null,
-      tie.down ?? null,
-      other.eventId,
-    );
-    writeStatus(db, { set: "doubt", id: doubtId }, "tie_added", cleanNote(note));
-  });
-}
-
-/** Deletes a tie of the person of the doubt (with its attributes) and closes the doubt. */
-export function deleteTieForDoubt(
-  db: DatabaseSync,
-  doubtId: number,
-  tieId: number,
-  note?: string,
-): void {
-  const doubt = tieDoubt(db, doubtId);
-  const owned = selectRows(
-    db,
-    z.object({ id: z.number() }),
-    "select id from tie where id = ?1 and run_id = ?2 and (person_id = ?3 or other_id = ?3)",
-    [tieId, doubt.runId, doubt.personId],
-  );
-  if (owned.length === 0) throw new Error("this tie does not belong to the person of the doubt");
-  inTransaction(db, () => {
-    db.prepare("delete from attribute where tie_id = ?").run(tieId);
-    db.prepare("delete from tie where id = ?").run(tieId);
-    writeStatus(db, { set: "doubt", id: doubtId }, "tie_deleted", cleanNote(note));
   });
 }
 

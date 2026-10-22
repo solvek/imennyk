@@ -1,13 +1,13 @@
 // HTML of Gortach: the list of cases and the two tabs of a case. Pure functions of their input.
 import { esc, page } from "../html.ts";
-import { DOUBT_STATUSES, TIE_TYPES } from "../../genealogy/indexing/enums.ts";
+import { REVIEW_STATUSES } from "../../genealogy/indexing/enums.ts";
 import {
   reviewTone,
   type ItemFilter,
   type Progress,
   type ReviewItem,
   type ReviewSet,
-  type TieCandidates,
+  type ReviewStatus,
 } from "../../genealogy/indexing/review.ts";
 
 const STYLE = `<style>
@@ -56,59 +56,25 @@ const ELEMENT_LABELS: Record<string, string> = {
   surname: "прізвище",
   given: "ім'я",
   patronymic: "по батькові",
-  age: "вік",
-  gender: "стать",
   place: "місце",
-  tie: "зв'язок",
-  other: "інше",
 };
 
-const TIE_LABELS: Record<string, string> = {
-  child: "дитина (child)",
-  spouse: "подружжя (spouse)",
-  godparent: "хрещений (godparent)",
-  friend: "друг (friend)",
-  witness: "свідок (witness)",
-  officiant: "священник (officiant)",
-  informant: "інформатор (informant)",
-  mentioned: "згадана особа (mentioned)",
-  kin: "рідня (kin)",
-  relative: "родич (relative)",
-};
-
-const STATUS_FILTER_LABELS: Record<(typeof DOUBT_STATUSES)[number], string> = {
+const STATUS_FILTER_LABELS: Record<ReviewStatus, string> = {
   open: "відкриті",
   confirmed: "правильно",
   fixed: "виправлено",
-  unknown: "не читається / не знаю",
-  tie_added: "зв'язок додано",
-  tie_deleted: "зв'язок видалено",
+  unknown: "не читається",
+};
+
+const STATUS_LABELS: Record<ReviewStatus, string> = {
+  open: "відкритий",
+  confirmed: "правильно",
+  fixed: "виправлено",
+  unknown: "не читається",
 };
 
 function elementLabel(element: string): string {
   return ELEMENT_LABELS[element] ?? element;
-}
-
-/** A name part (or a sample place) is «unreadable»; anything else is «do not know». */
-function unknownLabel(item: ReviewItem): string {
-  return item.editable ? "не читається" : "не знаю";
-}
-
-function statusLabel(item: ReviewItem): string {
-  switch (item.status) {
-    case "open":
-      return "відкритий";
-    case "confirmed":
-      return "правильно";
-    case "fixed":
-      return "виправлено";
-    case "unknown":
-      return unknownLabel(item);
-    case "tie_added":
-      return "зв'язок додано";
-    case "tie_deleted":
-      return "зв'язок видалено";
-  }
 }
 
 export function routeOf(set: ReviewSet): "doubts" | "sample" {
@@ -169,8 +135,6 @@ export interface CardContext {
   readonly filter: ItemFilter;
   /** Whether the full scan is in `raw/`. */
   readonly hasScan: (file: string) => boolean;
-  /** Candidates for «add a tie», for doubts about a tie. */
-  readonly candidates: (doubtId: number) => TieCandidates | undefined;
 }
 
 function hidden(name: string, value: string): string {
@@ -287,34 +251,6 @@ function scanLink(item: ReviewItem): string {
     : label;
 }
 
-function tieForms(ctx: CardContext, item: ReviewItem): string {
-  const ties = item.ties ?? [];
-  const remove = ties
-    .map(
-      (tie) =>
-        `<form method="post" action="${esc(actionUrl(ctx, item, "delete-tie"))}">${keep(ctx)}${hidden("tie", String(tie.id))}<span>${esc(tie.outgoing ? tie.type : `${tie.type} ←`)} · ${esc(tie.otherName)}</span><button class="bad">видалити зв'язок</button></form>`,
-    )
-    .join("");
-  const options = ctx.candidates(item.id);
-  const add =
-    options === undefined
-      ? ""
-      : `<form method="post" action="${esc(actionUrl(ctx, item, "add-tie"))}">${keep(ctx)}
-          <select name="type">${TIE_TYPES.map((type) => `<option value="${type}">${esc(TIE_LABELS[type] ?? type)}</option>`).join("")}</select>
-          <select name="other">${options.candidates
-            .map(
-              (candidate) =>
-                `<option value="${String(candidate.personId)}"${candidate.personId === options.defaultId ? " selected" : ""}>${esc(candidate.name)}${candidate.isHead ? " (голова двору)" : ""}</option>`,
-            )
-            .join("")}</select>
-          <input name="relation" placeholder="relation (kin, relative)" size="14">
-          <input name="up" placeholder="up" size="3" inputmode="numeric">
-          <input name="down" placeholder="down" size="3" inputmode="numeric">
-          <input name="note" placeholder="примітка" size="16">
-          <button class="ok">додати зв'язок</button></form>`;
-  return remove + add;
-}
-
 function actions(ctx: CardContext, item: ReviewItem): string {
   if (item.status !== "open") {
     return `<form method="post" action="${esc(actionUrl(ctx, item, "reopen"))}">${keep(ctx)}<button>відкрити знову</button></form>`;
@@ -322,13 +258,13 @@ function actions(ctx: CardContext, item: ReviewItem): string {
   const status = `<form method="post" action="${esc(actionUrl(ctx, item, "status"))}">${keep(ctx)}
       <input name="note" placeholder="примітка" size="20">
       <button class="ok" name="status" value="confirmed">правильно</button>
-      <button class="bad" name="status" value="unknown">${unknownLabel(item)}</button></form>`;
+      <button class="bad" name="status" value="unknown">не читається</button></form>`;
   const fix = item.editable
     ? `<form method="post" action="${esc(actionUrl(ctx, item, "fix"))}">${keep(ctx)}
         <input name="value" value="${esc(item.currentValue ?? "")}" size="22" aria-label="${esc(elementLabel(item.element))}">
         <button class="bad">виправити</button></form>`
     : "";
-  return status + fix + (item.element === "tie" && item.set === "doubt" ? tieForms(ctx, item) : "");
+  return status + fix;
 }
 
 export function card(ctx: CardContext, item: ReviewItem): string {
@@ -339,7 +275,7 @@ export function card(ctx: CardContext, item: ReviewItem): string {
     item.variants === null ? "" : `<div class="meta">варіанти: ${esc(item.variants)}</div>`,
     item.agentNote === null ? "" : `<div class="meta">агент: ${esc(item.agentNote)}</div>`,
     `<div class="meta">${scanLink(item)}</div>`,
-    `<div class="meta">стан: <strong>${esc(statusLabel(item))}</strong>${item.note === null ? "" : ` · ${esc(item.note)}`}</div>`,
+    `<div class="meta">стан: <strong>${esc(STATUS_LABELS[item.status])}</strong>${item.note === null ? "" : ` · ${esc(item.note)}`}</div>`,
   ];
   if (item.status !== "open" && item.currentValue !== null && item.currentValue !== item.readText) {
     lines.splice(1, 0, `<div class="meta">зараз у базі: ${esc(item.currentValue)}</div>`);
@@ -373,7 +309,7 @@ function filterForm(data: CasePage): string {
         `<option value="${esc(row.element)}"${data.filter.element === row.element ? " selected" : ""}>${esc(elementLabel(row.element))} ${String(row.reviewed)} / ${String(row.total)}</option>`,
     )
     .join("");
-  const statuses = DOUBT_STATUSES.map(
+  const statuses = REVIEW_STATUSES.map(
     (status) =>
       `<option value="${status}"${data.filter.status === status ? " selected" : ""}>${STATUS_FILTER_LABELS[status]}</option>`,
   ).join("");

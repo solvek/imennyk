@@ -4,11 +4,9 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { join } from "node:path";
 import type { DatabaseSync } from "node:sqlite";
 import { openCaseDb } from "../../genealogy/indexing/db.ts";
-import { DOUBT_STATUSES } from "../../genealogy/indexing/enums.ts";
+import { REVIEW_STATUSES } from "../../genealogy/indexing/enums.ts";
 import { rawFiles, wipeRaw } from "../../genealogy/indexing/raw.ts";
 import {
-  addTieForDoubt,
-  deleteTieForDoubt,
   findItem,
   fixName,
   listCases,
@@ -18,7 +16,6 @@ import {
   recordedErrorRate,
   reopen,
   setStatus,
-  tieCandidates,
   type ItemFilter,
   type ReviewSet,
 } from "../../genealogy/indexing/review.ts";
@@ -81,7 +78,7 @@ function filterOf(params: URLSearchParams, prefix: string): ItemFilter {
   const status = params.get(`${prefix}status`) ?? "";
   return {
     ...(element === "" ? {} : { element }),
-    ...(DOUBT_STATUSES.some((known) => known === status) ? { status } : {}),
+    ...(REVIEW_STATUSES.some((known) => known === status) ? { status } : {}),
   };
 }
 
@@ -210,13 +207,6 @@ function showCase(
       caseName,
       filter,
       hasScan: (file) => existsSync(join(options.root, caseName, "raw", file)),
-      candidates: (doubtId) => {
-        try {
-          return tieCandidates(db, doubtId);
-        } catch {
-          return undefined;
-        }
-      },
     },
   });
 }
@@ -258,34 +248,6 @@ function act(
     case "reopen":
       reopen(db, ref);
       break;
-    case "add-tie": {
-      if (set !== "doubt") throw new NotFound();
-      const otherId = whole(form.get("other"));
-      if (otherId === undefined) throw new Error("не вибрано іншу особу");
-      const relation = (form.get("relation") ?? "").trim();
-      const up = whole(form.get("up"));
-      const down = whole(form.get("down"));
-      addTieForDoubt(
-        db,
-        id,
-        {
-          otherId,
-          type: form.get("type") ?? "",
-          ...(relation === "" ? {} : { relation }),
-          ...(up === undefined ? {} : { up }),
-          ...(down === undefined ? {} : { down }),
-        },
-        note,
-      );
-      break;
-    }
-    case "delete-tie": {
-      if (set !== "doubt") throw new NotFound();
-      const tieId = whole(form.get("tie"));
-      if (tieId === undefined) throw new Error("не вибрано зв'язок");
-      deleteTieForDoubt(db, id, tieId, note);
-      break;
-    }
     default:
       throw new NotFound();
   }

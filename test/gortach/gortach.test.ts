@@ -38,22 +38,24 @@ function build(name: string, withSample: boolean): void {
   ingestReading(db, run, {
     scan: "n_1",
     year: 1912,
+    places: [{ key: "v", name: "Селець", type: "settlement", box: box(5) }],
     households: [
       {
         key: "h1",
+        place: "v",
         members: [
           { key: "t", head: true, given: "Тарас", surname: "Петренко", box: box(10) },
           { key: "s", given: "Соломонія", surname: "Петренко", box: box(30) },
-          { key: "c", given: "Петро", surname: "Петренко", box: box(50) },
+          { key: "c", given: "Петро", patronymic: "Тарасовъ", surname: "Петренко", box: box(50) },
         ],
         ties: [{ person: "c", other: "t", type: "child" }],
       },
     ],
     doubts: [
       { element: "surname", person: "t", read: "Петренко", variants: "Петренко", box: box(10) },
-      { element: "tie", person: "s", read: "Соломонія", box: box(30) },
-      { element: "tie", person: "c", read: "Петро", box: box(50) },
-      { element: "age", person: "s", read: "57", box: box(30) },
+      { element: "given", person: "s", read: "Соломонія", box: box(30) },
+      { element: "patronymic", person: "c", read: "Тарасовъ", box: box(50) },
+      { element: "place", place: "v", read: "Селець", box: box(5) },
     ],
   });
   if (withSample) buildSample(db, "seed", 3);
@@ -201,21 +203,19 @@ describe("pages", () => {
   });
 
   it("filters doubts by element and state", async () => {
-    const html = await (await get(`/c/${CASE}/doubts?element=tie`)).text();
-    expect(html.match(/<article/g)).toHaveLength(2);
-    const none = await (await get(`/c/${CASE}/doubts?element=tie&status=fixed`)).text();
+    const html = await (await get(`/c/${CASE}/doubts?element=given`)).text();
+    expect(html.match(/<article/g)).toHaveLength(1);
+    const none = await (await get(`/c/${CASE}/doubts?element=given&status=fixed`)).text();
     expect(none.match(/<article/g)).toBeNull();
   });
 
-  it("offers «delete tie» only to a person with ties, and «add tie» with the nearest head", async () => {
-    const html = await (await get(`/c/${CASE}/doubts?element=tie`)).text();
-    const [withoutTie, withTie] = [articleOf(html, 2), articleOf(html, 3)];
-    expect(withoutTie).not.toContain("видалити зв'язок");
-    expect(withTie).toContain("видалити зв'язок");
-    expect(withoutTie).toContain("додати зв'язок");
-    expect(withoutTie).toMatch(
-      /<option value="\d+" selected>Тарас Петренко \(голова двору\)<\/option>/,
-    );
+  it("offers words only: a fix for a name part, no fix for a place, nothing about ties", async () => {
+    const html = await (await get(`/c/${CASE}/doubts`)).text();
+    expect(articleOf(html, 3)).toContain("виправити");
+    expect(articleOf(html, 4)).not.toContain("виправити");
+    expect(articleOf(html, 4)).toContain("не читається");
+    expect(html).not.toContain("зв'язок");
+    expect(html).not.toContain("не знаю");
   });
 
   it("tells that the sample is built after the run", async () => {
@@ -251,10 +251,10 @@ describe("actions", () => {
   it("keeps the filter when it goes back", async () => {
     const response = await post(`/c/${CASE}/doubts/4/status`, {
       status: "confirmed",
-      f_element: "age",
+      f_element: "place",
       f_status: "open",
     });
-    expect(response.headers.get("location")).toBe(`/c/${CASE}/doubts?element=age&status=open`);
+    expect(response.headers.get("location")).toBe(`/c/${CASE}/doubts?element=place&status=open`);
     const html = await (await get(`/c/${CASE}/doubts`)).text();
     expect(articleOf(html, 4)).toContain("tone-ok");
   });
@@ -287,31 +287,6 @@ describe("actions", () => {
     expect(rows("select status from sample where rank = 2")).toEqual([{ status: "fixed" }]);
   });
 
-  it("adds and deletes a tie", async () => {
-    const head = Number(rows("select id from person where given = 'Тарас'")[0]?.id);
-    const added = await post(`/c/${CASE}/doubts/2/add-tie`, { type: "child", other: String(head) });
-    expect(added.status).toBe(303);
-    expect(rows("select type, other_id from tie order by id desc limit 1")).toEqual([
-      { type: "child", other_id: head },
-    ]);
-    const self = Number(rows("select id from person where given = 'Петро'")[0]?.id);
-    const refused = await post(`/c/${CASE}/doubts/3/add-tie`, {
-      type: "child",
-      other: String(self),
-    });
-    expect(refused.status).toBe(400);
-    const tie = Number(
-      rows("select id from tie where person_id = (select id from person where given = 'Петро')")[0]
-        ?.id,
-    );
-    expect((await post(`/c/${CASE}/doubts/3/delete-tie`, { tie: String(tie) })).status).toBe(303);
-    expect(rows("select count(*) as n from tie where id = " + String(tie))).toEqual([{ n: 0 }]);
-    expect(rows("select id, status from doubt where id in (2, 3) order by id")).toEqual([
-      { id: 2, status: "tie_added" },
-      { id: 3, status: "tie_deleted" },
-    ]);
-  });
-
   it("records the error rate: open places turn green and the metafile is written", async () => {
     expect((await post(`/c/${CASE}/sample/rate`)).status).toBe(303);
     expect(rows("select distinct status from sample order by status")).toEqual([
@@ -332,6 +307,7 @@ describe("actions", () => {
   it("answers 404 to an unknown item or action", async () => {
     expect((await post(`/c/${CASE}/doubts/99/reopen`)).status).toBe(404);
     expect((await post(`/c/${CASE}/doubts/1/bogus`)).status).toBe(404);
-    expect((await post(`/c/${CASE}/sample/1/add-tie`)).status).toBe(404);
+    expect((await post(`/c/${CASE}/doubts/2/add-tie`)).status).toBe(404);
+    expect((await post(`/c/${CASE}/doubts/2/delete-tie`)).status).toBe(404);
   });
 });
