@@ -6,7 +6,7 @@ import { BOX_ORIGINS, DOUBT_ELEMENTS, GENDERS, PLACE_TYPES, TIE_TYPES } from "./
 const key = z.string().min(1);
 
 /** A name part is the most plausible full form: no sign of doubt (that is what a doubt is for). */
-const namePart = z
+export const namePart = z
   .string()
   .min(1)
   .refine((value) => !/[?…]|\.\.\./.test(value), {

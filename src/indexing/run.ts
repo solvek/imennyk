@@ -1,8 +1,8 @@
 // Runs: one reading pass of a model over scans, and its metafile.
-import { writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { DatabaseSync } from "node:sqlite";
-import { stringify } from "yaml";
+import { parse, stringify } from "yaml";
 import { z } from "zod";
 import { selectRows } from "./db.ts";
 
@@ -82,4 +82,67 @@ export function writeRunReport(db: DatabaseSync, runId: number, dir: string): st
     }),
   );
   return path;
+}
+
+/** The result of checking the sample of a run: wrong places among all, and their share in %. */
+export interface RunErrorRate {
+  readonly size: number;
+  readonly errors: number;
+  readonly percent: number;
+}
+
+const metafile = z.record(z.string(), z.unknown());
+const recordedRate = z.object({
+  wer: z.number(),
+  sample_errors: z.number(),
+  sample_size: z.number(),
+});
+
+function runPath(db: DatabaseSync, runId: number, dir: string): string {
+  const run = selectRows(db, runRow, "select * from run where id = ?", [runId])[0];
+  if (run === undefined) throw new Error(`unknown run ${String(runId)}`);
+  return join(dir, runFileName(run.started_at));
+}
+
+/**
+ * Writes the error rate into the metafile of run `runId`; only `wer`, `sample_errors` and
+ * `sample_size` change. A missing metafile is created first.
+ */
+export function writeRunErrorRate(
+  db: DatabaseSync,
+  runId: number,
+  dir: string,
+  rate: RunErrorRate,
+): string {
+  const path = existsSync(runPath(db, runId, dir))
+    ? runPath(db, runId, dir)
+    : writeRunReport(db, runId, dir);
+  const content = metafile.parse(parse(readFileSync(path, "utf8")));
+  writeFileSync(
+    path,
+    stringify({
+      ...content,
+      wer: rate.percent,
+      sample_errors: rate.errors,
+      sample_size: rate.size,
+    }),
+  );
+  return path;
+}
+
+/** The error rate recorded in the metafile of run `runId`, or null when there is none yet. */
+export function readRunErrorRate(
+  db: DatabaseSync,
+  runId: number,
+  dir: string,
+): RunErrorRate | null {
+  const path = runPath(db, runId, dir);
+  if (!existsSync(path)) return null;
+  const parsed = recordedRate.safeParse(parse(readFileSync(path, "utf8")));
+  if (!parsed.success) return null;
+  return {
+    size: parsed.data.sample_size,
+    errors: parsed.data.sample_errors,
+    percent: parsed.data.wer,
+  };
 }

@@ -74,3 +74,8 @@ export const DOUBT_ELEMENTS = [
   "tie",
   "other",
 ] as const;
+
+/** States of review shared by doubts and places of the sample. */
+export const REVIEW_STATUSES = ["open", "confirmed", "fixed", "unknown"] as const;
+/** A doubt about a tie can also end with a tie added or deleted. */
+export const DOUBT_STATUSES = [...REVIEW_STATUSES, "tie_added", "tie_deleted"] as const;
