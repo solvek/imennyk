@@ -238,6 +238,15 @@ function getItem(db: DatabaseSync, ref: ItemRef): { item: ReviewItem; runId: num
   return { item: toItem(db, ref.set, row), runId: row.run_id };
 }
 
+/** One item by its address, or undefined when there is none. */
+export function findItem(db: DatabaseSync, ref: ItemRef): ReviewItem | undefined {
+  try {
+    return getItem(db, ref).item;
+  } catch {
+    return undefined;
+  }
+}
+
 export interface Progress {
   readonly total: number;
   /** Items that are not open. */
