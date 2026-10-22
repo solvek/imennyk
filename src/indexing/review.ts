@@ -58,8 +58,17 @@ export interface ReviewItem {
   readonly id: number;
   readonly scan: string;
   readonly url: string;
-  /** File in `boxes/`, or null when the item has no box. */
-  readonly boxFile: string | null;
+  /** File of the full scan in `raw/`. */
+  readonly scanFile: string;
+  readonly scanWidth: number;
+  readonly scanHeight: number;
+  /** The place on the scan, or null when the item has no box. */
+  readonly box: {
+    readonly x: number;
+    readonly y: number;
+    readonly w: number;
+    readonly h: number;
+  } | null;
   readonly personId: number | null;
   readonly element: string;
   /** What the agent read (for the sample, the snapshot once the place has been reviewed). */
@@ -84,9 +93,12 @@ const itemRow = z.object({
   id: z.number(),
   scan: z.string(),
   url: z.string(),
-  box_scan: z.string().nullable(),
-  box_id: z.number().nullable(),
-  mention_id: z.number().nullable(),
+  width: z.number(),
+  height: z.number(),
+  box_x: z.number().nullable(),
+  box_y: z.number().nullable(),
+  box_w: z.number().nullable(),
+  box_h: z.number().nullable(),
   person_id: z.number().nullable(),
   run_id: z.number(),
   element: z.string(),
@@ -99,7 +111,7 @@ const itemRow = z.object({
 });
 
 const DOUBT_SQL = `
-  select d.id, s.name as scan, s.url, bs.name as box_scan, d.box_id, null as mention_id,
+  select d.id, s.name as scan, s.url, s.width, s.height, b.x as box_x, b.y as box_y, b.w as box_w, b.h as box_h,
          d.person_id, d.run_id, d.element, d.read_text, d.variants, d.note as agent_note,
          d.status, d.resolution as note,
          case d.element when 'given' then p.given when 'patronymic' then p.patronymic
@@ -107,18 +119,16 @@ const DOUBT_SQL = `
     from doubt d
     join scan s on s.id = d.scan_id
     left join box b on b.id = d.box_id
-    left join scan bs on bs.id = b.scan_id
     left join person p on p.id = d.person_id`;
 
 const SAMPLE_SQL = `
-  select sm.rank as id, s.name as scan, s.url, bs.name as box_scan, m.box_id, m.id as mention_id,
+  select sm.rank as id, s.name as scan, s.url, s.width, s.height, b.x as box_x, b.y as box_y, b.w as box_w, b.h as box_h,
          m.person_id, m.run_id, 'surname' as element, coalesce(sm.read_text, m.text) as read_text,
          null as variants, null as agent_note, sm.status, sm.note, m.text as current_value
     from sample sm
     join name_mention m on m.id = sm.name_mention_id
     join scan s on s.id = m.scan_id
-    left join box b on b.id = m.box_id
-    left join scan bs on bs.id = b.scan_id`;
+    left join box b on b.id = m.box_id`;
 
 function itemSql(set: ReviewSet): string {
   return set === "doubt" ? DOUBT_SQL : SAMPLE_SQL;
@@ -182,18 +192,19 @@ function toStatus(value: string): ReviewStatus {
 }
 
 function toItem(db: DatabaseSync, set: ReviewSet, row: z.infer<typeof itemRow>): ReviewItem {
-  const prefix = set === "doubt" ? "d" : "m";
-  const fileId = set === "doubt" ? row.id : row.mention_id;
   const editable = row.person_id !== null && (set === "sample" || isNameColumn(row.element));
   return {
     set,
     id: row.id,
     scan: row.scan,
     url: row.url,
-    boxFile:
-      row.box_id === null || row.box_scan === null || fileId === null
+    scanFile: `${row.scan}.jpg`,
+    scanWidth: row.width,
+    scanHeight: row.height,
+    box:
+      row.box_x === null || row.box_y === null || row.box_w === null || row.box_h === null
         ? null
-        : `${row.box_scan}-${prefix}${String(fileId)}.jpg`,
+        : { x: row.box_x, y: row.box_y, w: row.box_w, h: row.box_h },
     personId: row.person_id,
     element: row.element,
     readText: row.read_text,

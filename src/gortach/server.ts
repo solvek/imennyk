@@ -5,6 +5,7 @@ import { join } from "node:path";
 import type { DatabaseSync } from "node:sqlite";
 import { openCaseDb } from "../../genealogy/indexing/db.ts";
 import { DOUBT_STATUSES } from "../../genealogy/indexing/enums.ts";
+import { rawFiles, wipeRaw } from "../../genealogy/indexing/raw.ts";
 import {
   addTieForDoubt,
   deleteTieForDoubt,
@@ -36,7 +37,7 @@ export interface Gortach {
 }
 
 const DATABASE_FILE = "case.sqlite";
-const CROP_NAME = /^[\w.-]+-[dm]\d+\.jpg$/;
+const SCAN_NAME = /^[\w.-]+\.jpg$/;
 const WHOLE_NUMBER = /^\d+$/;
 const TEXT = "text/html; charset=utf-8";
 
@@ -150,12 +151,17 @@ async function handle(
   // Only a sub-folder of the root is a case: `..`, `/` and unknown names stop here.
   if (!listCases(options.root).includes(caseName)) throw new NotFound();
   const caseDir = join(options.root, caseName);
-  if (section === "box" && method === "GET") {
+  if (section === "raw" && method === "GET") {
     const file = rest[0];
-    if (file === undefined || rest.length !== 1 || !CROP_NAME.test(file)) throw new NotFound();
-    const path = join(caseDir, "boxes", file);
+    if (file === undefined || rest.length !== 1 || !SCAN_NAME.test(file)) throw new NotFound();
+    const path = join(caseDir, "raw", file);
     if (!existsSync(path)) throw new NotFound();
     send(res, 200, "image/jpeg", readFileSync(path));
+    return;
+  }
+  if (section === "raw" && method === "POST" && rest.length === 1 && rest[0] === "wipe") {
+    wipeRaw(caseDir);
+    redirect(res, caseHref(caseName, "doubt"));
     return;
   }
   const set = setOf(section);
@@ -198,11 +204,12 @@ function showCase(
     doubts: progress(db, "doubt"),
     sample: progress(db, "sample"),
     filter,
+    rawCount: rawFiles(join(options.root, caseName)).length,
     recorded: recordedErrorRate(db, join(options.root, caseName)),
     context: {
       caseName,
       filter,
-      hasCrop: (file) => existsSync(join(options.root, caseName, "boxes", file)),
+      hasScan: (file) => existsSync(join(options.root, caseName, "raw", file)),
       candidates: (doubtId) => {
         try {
           return tieCandidates(db, doubtId);

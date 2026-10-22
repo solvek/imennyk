@@ -1,11 +1,10 @@
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync } from "node:fs";
 import type { DatabaseSync } from "node:sqlite";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
 import { SAMPLE_SIZE } from "../../../src/genealogy/indexing/constants.ts";
-import { cropAll, type Rect } from "../../../src/genealogy/indexing/crop.ts";
 import { openCaseDb } from "../../../src/genealogy/indexing/db.ts";
 import { ingestReading } from "../../../src/genealogy/indexing/ingest.ts";
 import { runFileName, startRun, writeRunReport } from "../../../src/genealogy/indexing/run.ts";
@@ -70,45 +69,6 @@ describe("sample", () => {
   it("takes all places when there are fewer than the size", () => {
     const { db } = caseWithSurnames(8);
     expect(buildSample(db, "seed")).toHaveLength(8);
-  });
-});
-
-describe("crops", () => {
-  it("cuts doubts and sampled mentions, named by scan and id", async () => {
-    const { db } = caseWithSurnames(5);
-    buildSample(db, "seed");
-    const dir = mkdtempSync(join(tmpdir(), "indexing-crop-"));
-    const scanPath = join(dir, "n_1.jpg");
-    writeFileSync(scanPath, "fake");
-    const cuts: Rect[] = [];
-    const files = await cropAll(
-      db,
-      join(dir, "boxes"),
-      () => scanPath,
-      (_source, rect, target) => {
-        cuts.push(rect);
-        writeFileSync(target, "cut");
-        return Promise.resolve();
-      },
-    );
-    expect(files).toHaveLength(6);
-    expect(files[0]).toMatch(/boxes\/n_1-d1\.jpg$/);
-    expect(files.every((file) => existsSync(file))).toBe(true);
-    expect(cuts[0]).toEqual({ x: 0, y: 0, w: 50, h: 20 });
-  });
-
-  it("fails clearly, cutting nothing, when a scan copy is missing", async () => {
-    const { db } = caseWithSurnames(5);
-    const dir = mkdtempSync(join(tmpdir(), "indexing-crop-"));
-    await expect(
-      cropAll(
-        db,
-        join(dir, "boxes"),
-        () => join(dir, "nope.jpg"),
-        () => Promise.resolve(),
-      ),
-    ).rejects.toThrow(/no local copy of the scans: n_1/);
-    expect(existsSync(join(dir, "boxes"))).toBe(false);
   });
 });
 

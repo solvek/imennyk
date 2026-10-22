@@ -147,15 +147,19 @@ describe("listItems and progress", () => {
       status: "confirmed",
       currentValue: "Петренко",
       editable: true,
-      boxFile: `n_1-d${String(first)}.jpg`,
+      scanFile: "n_1.jpg",
+      scanWidth: 2000,
+      scanHeight: 2000,
+      box: { x: 10, y: 10, w: 100, h: 15 },
     });
   });
 
-  it("has no crop file for a doubt without a box", () => {
+  it("has no box for a doubt without one, but still the scan", () => {
     const { db } = fixture();
     db.exec("update doubt set box_id = null where id = 1");
-    const items = listItems(db, "doubt").filter((item) => item.boxFile === null);
+    const items = listItems(db, "doubt").filter((item) => item.box === null);
     expect(items.map((item) => item.id)).toEqual([1]);
+    expect(items[0]?.scanFile).toBe("n_1.jpg");
   });
 
   it("describes places of the sample by their mention", () => {
@@ -164,8 +168,8 @@ describe("listItems and progress", () => {
     expect(items).toHaveLength(4);
     expect(items.map((item) => item.id)).toEqual([1, 2, 3, 4]);
     expect(items.every((item) => item.element === "surname" && item.editable)).toBe(true);
-    const mention = id(db, "select name_mention_id as id from sample where rank = ?", "1");
-    expect(items[0]?.boxFile).toMatch(new RegExp(`^n_[12]-m${String(mention)}\\.jpg$`));
+    expect(items[0]?.scanFile).toMatch(/^n_[12]\.jpg$/);
+    expect(items[0]?.box).toMatchObject({ w: 100, h: 15 });
   });
 
   it("filters by element and state", () => {

@@ -1,4 +1,11 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  mkdtempSync,
+  readFileSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -22,7 +29,7 @@ function dbPath(name = CASE): string {
 }
 
 function build(name: string, withSample: boolean): void {
-  mkdirSync(join(root, name, "boxes"), { recursive: true });
+  mkdirSync(join(root, name), { recursive: true });
   const db = openCaseDb(dbPath(name));
   db.exec(
     "insert into scan (name, url, width, height) values ('n_1', 'https://example.org/n_1', 2000, 2000)",
@@ -57,10 +64,16 @@ beforeAll(async () => {
   root = mkdtempSync(join(tmpdir(), "gortach-"));
   build(CASE, true);
   build("case-b", false);
+  build("case-c", false);
+  mkdirSync(join(root, "case-c", "raw", "keep-folder"), { recursive: true });
+  for (const name of ["n_1.jpg", "n_2.jpg", "n_3.jpg"]) {
+    writeFileSync(join(root, "case-c", "raw", name), "fake-jpeg");
+  }
   mkdirSync(join(root, "notes"));
   writeFileSync(join(root, "readme.md"), "not a case");
-  // The crop of the first doubt exists; the others have none.
-  writeFileSync(join(root, CASE, "boxes", "n_1-d1.jpg"), "fake-jpeg");
+  // The full scan is in raw/ of the first case only.
+  mkdirSync(join(root, CASE, "raw"));
+  writeFileSync(join(root, CASE, "raw", "n_1.jpg"), "fake-jpeg");
   server = await startGortach({ root, port: 0, host: "127.0.0.1" });
   base = `http://127.0.0.1:${String(server.port)}`;
 });
@@ -129,26 +142,62 @@ describe("cases", () => {
   });
 });
 
-describe("crops", () => {
-  it("serves a crop and refuses other names", async () => {
-    const response = await get(`/c/${CASE}/box/n_1-d1.jpg`);
+describe("scans", () => {
+  it("serves a scan from raw/ and refuses other names", async () => {
+    const response = await get(`/c/${CASE}/raw/n_1.jpg`);
     expect(response.status).toBe(200);
     expect(response.headers.get("content-type")).toBe("image/jpeg");
     expect(await response.text()).toBe("fake-jpeg");
-    for (const name of ["n_1-d2.jpg", "case.sqlite", "..%2Fcase.sqlite", "x.png", "n_1-x1.jpg"]) {
-      expect((await get(`/c/${CASE}/box/${name}`)).status).toBe(404);
+    for (const name of ["n_2.jpg", "case.sqlite", "..%2Fcase.sqlite", "x.png"]) {
+      expect((await get(`/c/${CASE}/raw/${name}`)).status).toBe(404);
     }
   });
 });
 
+describe("wiping scans", () => {
+  it("offers the button with the number of files only when there are some", async () => {
+    expect(await (await get(`/c/${CASE}/doubts`)).text()).toContain("Витерти скани (1)");
+    expect(await (await get("/c/case-b/doubts")).text()).not.toContain("Витерти скани");
+  });
+
+  it("deletes the files of raw/ of this case only", async () => {
+    const response = await post("/c/case-c/raw/wipe");
+    expect(response.status).toBe(303);
+    expect(response.headers.get("location")).toBe("/c/case-c/doubts");
+    expect(readdirSync(join(root, "case-c", "raw"))).toEqual(["keep-folder"]);
+    expect(existsSync(join(root, CASE, "raw", "n_1.jpg"))).toBe(true);
+    expect(existsSync(dbPath("case-c"))).toBe(true);
+    expect(await (await get("/c/case-c/doubts")).text()).not.toContain("Витерти скани");
+  });
+
+  it("refuses names that are not cases and other methods", async () => {
+    expect((await post("/c/..%2F/raw/wipe")).status).toBe(404);
+    expect((await post("/c/nope/raw/wipe")).status).toBe(404);
+    expect((await get(`/c/${CASE}/raw/wipe`)).status).toBe(404);
+    expect(existsSync(join(root, CASE, "raw", "n_1.jpg"))).toBe(true);
+  });
+});
+
 describe("pages", () => {
-  it("shows the doubts with progress, the scan link, and a note when a crop is missing", async () => {
+  it("shows the doubts with progress, the scan link, and a viewport on the scan", async () => {
     const html = await (await get(`/c/${CASE}/doubts`)).text();
     expect(html).toContain("Сумніви 0 / 4");
     expect(html).toContain("Вибірка 0 / 3");
     expect(html).toContain('href="https://example.org/n_1" target="_blank" rel="noopener"');
-    expect(html).toContain('<a href="/c/case-a/box/n_1-d1.jpg" target="_blank" rel="noopener"');
-    expect(html).toContain("вирізки немає");
+    expect(html).toContain(
+      'class="vp" data-sw="2000" data-sh="2000" data-x="10" data-y="10" data-w="100" data-h="15"',
+    );
+    expect(html).toContain('data-src="/c/case-a/raw/n_1.jpg"');
+    expect(html).toContain(
+      '<a href="/c/case-a/raw/n_1.jpg" target="_blank" rel="noopener">відкрити скан повністю</a>',
+    );
+    expect(html).not.toContain("boxes");
+  });
+
+  it("says that the scan is missing from raw/", async () => {
+    const html = await (await get("/c/case-b/doubts")).text();
+    expect(html).toContain("скана немає в raw/");
+    expect(html).not.toContain('class="vp"');
   });
 
   it("filters doubts by element and state", async () => {

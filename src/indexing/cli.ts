@@ -4,7 +4,6 @@ import { readFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import { parseArgs } from "node:util";
 import { z } from "zod";
-import { cropAll } from "./crop.ts";
 import { dumpCaseDb } from "./dump.ts";
 import { openCaseDb, selectRows } from "./db.ts";
 import { ingestReading } from "./ingest.ts";
@@ -18,7 +17,6 @@ const USAGE = `usage: pnpm indexing <command> <case dir> [options]
   run-start --model M [--session S] [--effort E] [--sha SHA] [--note N]   print the run id
   ingest <run id> <reading.json>      write the reading of one scan
   sample                              build (once) and print the sample of surname places
-  crop --scans <dir with <name>.jpg>  cut doubts and the sample into boxes/
   run-report <run id>                 write run-<datetime>.yaml
   dump <file.sqlite>                  text dump for git diff (the first argument is the file)`;
 
@@ -38,7 +36,7 @@ function procedureSha(): string | undefined {
   }
 }
 
-async function main(argv: string[]): Promise<void> {
+function main(argv: string[]): void {
   const { positionals, values } = parseArgs({
     args: argv,
     allowPositionals: true,
@@ -48,7 +46,6 @@ async function main(argv: string[]): Promise<void> {
       effort: { type: "string" },
       sha: { type: "string" },
       note: { type: "string" },
-      scans: { type: "string" },
     },
   });
   const [command, caseDir, arg] = positionals;
@@ -108,13 +105,6 @@ async function main(argv: string[]): Promise<void> {
       console.log(`sample: ${String(ids.length)} places`);
       return;
     }
-    case "crop": {
-      const dir = values.scans;
-      if (dir === undefined) throw new Error("--scans is required");
-      const files = await cropAll(db, join(caseDir, "boxes"), (scan) => join(dir, `${scan}.jpg`));
-      console.log(`cut ${String(files.length)} boxes`);
-      return;
-    }
     case "run-report":
       console.log(writeRunReport(db, Number(requireArg(arg, "run id")), caseDir));
       return;
@@ -129,4 +119,4 @@ function requireArg(value: string | undefined, name: string): string {
   return value;
 }
 
-await main(process.argv.slice(2));
+main(process.argv.slice(2));
