@@ -258,6 +258,9 @@ function writeReading(db: DatabaseSync, runId: number, reading: Reading): Ingest
       );
       counts.events += 1;
     }
+    for (const id of memberIds.values()) {
+      db.prepare("update person set event_id = ? where id = ?").run(eventId, id);
+    }
     addAttributes("event_id", eventId, household.attributes, householdBox);
     const tieEnd = (ref: string): number => {
       if (ref === "@head" || ref === "@spouse") {
