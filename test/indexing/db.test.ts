@@ -19,6 +19,8 @@ import {
   PLACE_TYPES,
   TIE_TYPES,
 } from "../../../src/genealogy/indexing/enums.ts";
+import { ATTRIBUTE_TYPES } from "../../../src/genealogy/attribute-types.ts";
+import { savePulled } from "../../../src/genealogy/indexing/pull.ts";
 import { connect } from "../../db.ts";
 
 function addScan(db: DatabaseSync, name = "n_001", width = 1000, height = 800): number {
@@ -239,6 +241,66 @@ describe("enums agree with ddb", () => {
       db
         .prepare("insert into place (run_id, scan_id, name, type) values (?, ?, 'p', 'bogus')")
         .run(run, scan),
+    ).toThrow();
+  });
+
+  it("accepts exactly the attribute types of the well", () => {
+    const db = openCaseDb(":memory:");
+    const scan = addScan(db);
+    const run = addRun(db);
+    for (const type of ATTRIBUTE_TYPES) {
+      db.prepare(
+        "insert into attribute (run_id, scan_id, type, on_scan, value) values (?, ?, ?, 1, 'x')",
+      ).run(run, scan, type.code);
+    }
+    expect(() =>
+      db
+        .prepare(
+          "insert into attribute (run_id, scan_id, type, on_scan, value) values (?, ?, 'bogus', 1, 'x')",
+        )
+        .run(run, scan),
+    ).toThrow();
+  });
+});
+
+describe("pulled repository and sources", () => {
+  const pulled = {
+    repositories: [{ id: 67, type: "archive", name: "Державний архів", abbr: "ДАЖО", url: null }],
+    sources: [
+      {
+        id: 420602,
+        repo: 67,
+        type: "confession",
+        period_from: "1912-01-01",
+        period_to: "1912-12-31",
+        period_qual: "exact",
+        title: "Сповідні відомості",
+        callno: "1/74/406",
+        url: "https://example.org/s",
+      },
+    ],
+  };
+
+  it("keeps the ids of the well and updates a row pulled again", () => {
+    const db = openCaseDb(":memory:");
+    expect(savePulled(db, pulled)).toEqual({ repositories: 1, sources: 1 });
+    savePulled(db, { ...pulled, sources: [{ ...(pulled.sources[0] ?? {}), title: "Нова назва" }] });
+    expect(
+      selectRows(
+        db,
+        z.object({ id: z.number(), title: z.string() }),
+        "select id, title from source",
+      ),
+    ).toEqual([{ id: 420602, title: "Нова назва" }]);
+  });
+
+  it("rejects a source whose date quality is not a ddb one", () => {
+    const db = openCaseDb(":memory:");
+    expect(() =>
+      savePulled(db, {
+        ...pulled,
+        sources: [{ ...(pulled.sources[0] ?? {}), period_qual: "maybe" }],
+      }),
     ).toThrow();
   });
 });

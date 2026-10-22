@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { openCaseDb, selectRows } from "../../../src/genealogy/indexing/db.ts";
 import { birthRange, ingestReading } from "../../../src/genealogy/indexing/ingest.ts";
+import { savePulled } from "../../../src/genealogy/indexing/pull.ts";
 
 function setup(): { db: DatabaseSync; run: number } {
   const db = openCaseDb(":memory:");
@@ -69,6 +70,7 @@ describe("ingestReading", () => {
       nameMentions: 6,
       doubts: 1,
       dictionary: 0,
+      attributes: 0,
     });
     const [event] = selectRows(
       db,
@@ -194,5 +196,212 @@ describe("ingestReading", () => {
     expect(() =>
       ingestReading(db, run, { ...reading, doubts: [{ element: "surname", unreadable: true }] }),
     ).toThrow();
+  });
+});
+
+describe("doubts and scan attributes", () => {
+  it("rejects a sign of doubt in a name and says where to put it", () => {
+    const { db, run } = setup();
+    const bad = structuredClone(reading);
+    const head = bad.households[0]?.members[0];
+    if (head === undefined) throw new Error("fixture");
+    head.surname = "Супр…ская";
+    expect(() => ingestReading(db, run, bad)).toThrow(/without «\?» or «…»/);
+    head.surname = "Занцевский?";
+    expect(() => ingestReading(db, run, bad)).toThrow(/without «\?» or «…»/);
+    expect(n(db, "person")).toBe(0);
+  });
+
+  it("rejects a doubt about a name the person does not have", () => {
+    const { db, run } = setup();
+    const bad = { ...reading, doubts: [{ element: "patronymic", person: "b", read: "x" }] };
+    expect(() => ingestReading(db, run, bad)).toThrow(/most plausible full variant/);
+    expect(n(db, "doubt")).toBe(0);
+  });
+
+  it("keeps the notes of the scan as its attributes, apart from doubts, and adds the next ones", () => {
+    const { db, run } = setup();
+    ingestReading(db, run, {
+      ...reading,
+      doubts: [],
+      scan_attributes: [{ type: "note", value: "left page is empty" }],
+    });
+    ingestReading(db, run, {
+      ...reading,
+      doubts: [],
+      scan_attributes: [{ type: "note", value: "title page" }],
+    });
+    expect(
+      selectRows(
+        db,
+        z.object({ type: z.string(), value: z.string() }),
+        "select type, value from attribute where on_scan = 1 order by id",
+      ),
+    ).toEqual([
+      { type: "note", value: "left page is empty" },
+      { type: "note", value: "title page" },
+    ]);
+    expect(n(db, "doubt")).toBe(0);
+  });
+});
+
+describe("attributes", () => {
+  const withAttributes = structuredClone(reading);
+  const head = withAttributes.households[0]?.members[0];
+  if (head === undefined) throw new Error("fixture");
+  Object.assign(head, {
+    attributes: [
+      { type: "occupation", value: "священник" },
+      { type: "serial", value: "124" },
+    ],
+  });
+  Object.assign(withAttributes.households[0] ?? {}, {
+    attributes: [{ type: "note", value: "Номер двору виведено" }],
+  });
+
+  it("stores attributes of a person and of a household event with a type of the well", () => {
+    const { db, run } = setup();
+    expect(ingestReading(db, run, withAttributes).attributes).toBe(3);
+    expect(
+      selectRows(
+        db,
+        z.object({ type: z.string(), value: z.string(), owner: z.string() }),
+        `select type, value, case when person_id is not null then 'person' when event_id is not null then 'event' end as owner
+           from attribute order by id`,
+      ),
+    ).toEqual([
+      { type: "occupation", value: "священник", owner: "person" },
+      { type: "serial", value: "124", owner: "person" },
+      { type: "note", value: "Номер двору виведено", owner: "event" },
+    ]);
+  });
+
+  it("rejects a type that is not an attribute type of the well and writes nothing", () => {
+    const { db, run } = setup();
+    const bad = structuredClone(withAttributes);
+    const member = bad.households[0]?.members[0];
+    if (member === undefined) throw new Error("fixture");
+    Object.assign(member, { attributes: [{ type: "mood", value: "good" }] });
+    expect(() => ingestReading(db, run, bad)).toThrow(/unknown attribute type/);
+    expect(n(db, "person")).toBe(0);
+  });
+
+  it("has exactly one owner", () => {
+    const { db, run } = setup();
+    ingestReading(db, run, withAttributes);
+    expect(() =>
+      db
+        .prepare(
+          "insert into attribute (run_id, scan_id, type, person_id, on_scan, value) values (?, 1, 'note', 1, 1, 'x')",
+        )
+        .run(run),
+    ).toThrow();
+    expect(() =>
+      db
+        .prepare("insert into attribute (run_id, scan_id, type, value) values (?, 1, 'note', 'x')")
+        .run(run),
+    ).toThrow();
+  });
+});
+
+describe("source of the household", () => {
+  it("links the event to a source pulled from the well and rejects an unknown one", () => {
+    const { db, run } = setup();
+    expect(() => ingestReading(db, run, { ...reading, source: 420602 })).toThrow(
+      /pull it from the well/,
+    );
+    savePulled(db, {
+      repositories: [{ id: 67, type: "archive", name: "Державний архів", abbr: "ДАЖО", url: null }],
+      sources: [
+        {
+          id: 420602,
+          repo: 67,
+          type: "confession",
+          period_from: null,
+          period_to: null,
+          period_qual: null,
+          title: "Сповідні відомості",
+          callno: "1/74/406",
+          url: null,
+        },
+      ],
+    });
+    ingestReading(db, run, { ...reading, source: 420602 });
+    expect(
+      selectRows(
+        db,
+        z.object({ n: z.number() }),
+        "select count(*) as n from event where source_id = 420602",
+      )[0]?.n,
+    ).toBe(1);
+  });
+});
+
+describe("household over a page break", () => {
+  function twoScans(): { db: DatabaseSync; run: number } {
+    const { db, run } = setup();
+    db.prepare("insert into scan (name, url, width, height) values ('n_2', 'u2', 1000, 800)").run();
+    ingestReading(db, run, reading);
+    return { db, run };
+  }
+  const next = {
+    scan: "n_2",
+    year: 1912,
+    households: [
+      {
+        key: "cont",
+        continues: { scan: "n_1", household: "h1" },
+        members: [
+          { key: "k", given: "Анна", gender: "female", age: 2, box: { x: 1, y: 1, w: 50, h: 20 } },
+        ],
+        ties: [
+          { person: "k", other: "@head", type: "child" },
+          { person: "k", other: "@spouse", type: "child" },
+        ],
+      },
+    ],
+  };
+
+  it("adds the members to the earlier household without a new event", () => {
+    const { db, run } = twoScans();
+    const events = n(db, "event");
+    expect(ingestReading(db, run, next).events).toBe(0);
+    expect(n(db, "event")).toBe(events);
+    const rows = selectRows(
+      db,
+      z.object({ other: z.string(), scan: z.string(), event_scan: z.string() }),
+      `select o.given as other, s.name as scan, es.name as event_scan
+         from tie t join person o on o.id = t.other_id join scan s on s.id = t.scan_id
+         join event e on e.id = t.event_id join scan es on es.id = e.scan_id
+        where t.person_id = (select id from person where given = 'Анна')`,
+    );
+    expect(rows.map((row) => row.other).toSorted()).toEqual(["Іван", "Марія"]);
+    expect(rows.every((row) => row.scan === "n_2" && row.event_scan === "n_1")).toBe(true);
+  });
+
+  it("rejects an unknown household, a head and @head in an ordinary household", () => {
+    const { db, run } = twoScans();
+    expect(() =>
+      ingestReading(db, run, {
+        ...next,
+        households: [{ ...next.households[0], continues: { scan: "n_1", household: "zz" } }],
+      }),
+    ).toThrow(/no household «zz»/);
+    const withHead = structuredClone(next);
+    const member = withHead.households[0]?.members[0];
+    if (member === undefined) throw new Error("fixture");
+    Object.assign(member, { head: true });
+    expect(() => ingestReading(db, run, withHead)).toThrow(/must have no head/);
+    const ordinary = {
+      ...reading,
+      households: [
+        {
+          ...reading.households[0],
+          key: "h9",
+          ties: [{ person: "a", other: "@head", type: "child" }],
+        },
+      ],
+    };
+    expect(() => ingestReading(db, run, ordinary)).toThrow(/only for a continued household/);
   });
 });

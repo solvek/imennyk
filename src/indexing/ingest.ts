@@ -13,6 +13,7 @@ export interface IngestResult {
   readonly nameMentions: number;
   readonly doubts: number;
   readonly dictionary: number;
+  readonly attributes: number;
 }
 
 /** Birth range of a person who is `age` full years old in the document of `year`. */
@@ -24,6 +25,36 @@ function lookup(map: ReadonlyMap<string, number>, key: string, what: string): nu
   const id = map.get(key);
   if (id === undefined) throw new Error(`unknown ${what} key «${key}»`);
   return id;
+}
+
+interface Continued {
+  readonly eventId: number;
+  readonly headId: number;
+  readonly spouseId: number | undefined;
+}
+
+/** The household (confession event) of an earlier reading of `scan` with this key. */
+function findHousehold(
+  db: DatabaseSync,
+  from: { readonly scan: string; readonly household: string },
+): Continued {
+  const event = selectRows(
+    db,
+    z.object({ id: z.number(), main_person_id: z.number() }),
+    `select e.id, e.main_person_id from event e join scan s on s.id = e.scan_id
+      where s.name = ? and e.key = ? and e.main_person_id is not null order by e.run_id desc limit 1`,
+    [from.scan, from.household],
+  )[0];
+  if (event === undefined) {
+    throw new Error(`no household «${from.household}» read on scan «${from.scan}» to continue`);
+  }
+  const spouse = selectRows(
+    db,
+    z.object({ person_id: z.number() }),
+    "select person_id from tie where event_id = ? and other_id = ? and type = 'spouse' order by id limit 1",
+    [event.id, event.main_person_id],
+  )[0];
+  return { eventId: event.id, headId: event.main_person_id, spouseId: spouse?.person_id };
 }
 
 function insert(db: DatabaseSync, sql: string, params: (string | number | null)[]): number {
@@ -51,6 +82,14 @@ function writeReading(db: DatabaseSync, runId: number, reading: Reading): Ingest
     throw new Error(`unknown run ${String(runId)}`);
   }
   const scanId = scan.id;
+  if (
+    reading.source !== undefined &&
+    selectRows(db, z.object({ id: z.number() }), "select id from source where id = ?", [
+      reading.source,
+    ]).length === 0
+  ) {
+    throw new Error(`unknown source ${String(reading.source)}: pull it from the well first`);
+  }
 
   const boxId = (box: Box | undefined): number | null =>
     box === undefined
@@ -73,7 +112,32 @@ function writeReading(db: DatabaseSync, runId: number, reading: Reading): Ingest
     nameMentions: 0,
     doubts: 0,
     dictionary: 0,
+    attributes: 0,
   };
+  type Owner = "person_id" | "event_id" | "tie_id" | "place_id" | "on_scan";
+  const addAttributes = (
+    owner: Owner,
+    ownerId: number | undefined,
+    attributes: readonly { type: string; value: string; box?: Box | undefined }[],
+    fallbackBox: number | null,
+  ): void => {
+    for (const attribute of attributes) {
+      insert(
+        db,
+        `insert into attribute (run_id, scan_id, box_id, type, ${owner}, value) values (?, ?, ?, ?, ?, ?)`,
+        [
+          runId,
+          scanId,
+          boxId(attribute.box) ?? fallbackBox,
+          attribute.type,
+          ownerId ?? 1,
+          attribute.value,
+        ],
+      );
+      counts.attributes += 1;
+    }
+  };
+  addAttributes("on_scan", undefined, reading.scan_attributes, null);
 
   const lineIds = new Map<string, number>();
   for (const line of reading.lines) {
@@ -109,9 +173,13 @@ function writeReading(db: DatabaseSync, runId: number, reading: Reading): Ingest
   const personIds = new Map<string, number>();
   for (const household of reading.households) {
     const heads = household.members.filter((member) => member.head);
-    if (heads.length !== 1) {
+    const continued =
+      household.continues === undefined ? undefined : findHousehold(db, household.continues);
+    if (continued === undefined ? heads.length !== 1 : heads.length !== 0) {
       throw new Error(
-        `household «${household.key}» must have exactly one head, has ${String(heads.length)}`,
+        continued === undefined
+          ? `household «${household.key}» must have exactly one head, has ${String(heads.length)}`
+          : `household «${household.key}» continues another one and must have no head`,
       );
     }
     const householdBox = boxId(household.box);
@@ -126,8 +194,8 @@ function writeReading(db: DatabaseSync, runId: number, reading: Reading): Ingest
       const id = insert(
         db,
         `insert into person (run_id, scan_id, box_id, line_id, gender, given, patronymic, surname,
-                             age, birth_from, birth_to, birth_qual, note)
-         values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                             age, birth_from, birth_to, birth_qual)
+         values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           runId,
           scanId,
@@ -141,9 +209,9 @@ function writeReading(db: DatabaseSync, runId: number, reading: Reading): Ingest
           birth?.from ?? null,
           birth?.to ?? null,
           birth === undefined ? null : "calculated",
-          member.note ?? null,
         ],
       );
+      addAttributes("person_id", id, member.attributes, memberBox);
       personIds.set(member.key, id);
       memberIds.set(member.key, id);
       counts.persons += 1;
@@ -163,25 +231,41 @@ function writeReading(db: DatabaseSync, runId: number, reading: Reading): Ingest
       }
     }
     const head = heads[0];
-    if (head === undefined) throw new Error("unreachable: household without head");
-    const eventId = insert(
-      db,
-      `insert into event (run_id, scan_id, box_id, line_id, type, main_person_id, year, place_id,
-                          number, note)
-       values (?, ?, ?, ?, 'confession', ?, ?, ?, ?, ?)`,
-      [
-        runId,
-        scanId,
-        householdBox,
-        householdLine,
-        lookup(memberIds, head.key, "person"),
-        reading.year,
-        household.place === undefined ? null : lookup(placeIds, household.place, "place"),
-        household.number ?? null,
-        household.note ?? null,
-      ],
-    );
-    counts.events += 1;
+    let eventId: number;
+    if (continued !== undefined) {
+      eventId = continued.eventId;
+    } else {
+      if (head === undefined) throw new Error("unreachable: household without head");
+      eventId = insert(
+        db,
+        `insert into event (run_id, scan_id, box_id, line_id, type, main_person_id, year, place_id,
+                            number, key, source_id)
+         values (?, ?, ?, ?, 'confession', ?, ?, ?, ?, ?, ?)`,
+        [
+          runId,
+          scanId,
+          householdBox,
+          householdLine,
+          lookup(memberIds, head.key, "person"),
+          reading.year,
+          household.place === undefined ? null : lookup(placeIds, household.place, "place"),
+          household.number ?? null,
+          household.key,
+          reading.source ?? null,
+        ],
+      );
+      counts.events += 1;
+    }
+    addAttributes("event_id", eventId, household.attributes, householdBox);
+    const tieEnd = (ref: string): number => {
+      if (ref === "@head" || ref === "@spouse") {
+        if (continued === undefined) throw new Error(`«${ref}» is only for a continued household`);
+        const id = ref === "@head" ? continued.headId : continued.spouseId;
+        if (id === undefined) throw new Error(`the continued household has no ${ref.slice(1)}`);
+        return id;
+      }
+      return lookup(memberIds, ref, "person");
+    };
     for (const tie of household.ties) {
       insert(
         db,
@@ -193,8 +277,8 @@ function writeReading(db: DatabaseSync, runId: number, reading: Reading): Ingest
           scanId,
           boxId(tie.box) ?? householdBox,
           lineOf(tie.line) ?? householdLine,
-          lookup(memberIds, tie.person, "person"),
-          lookup(memberIds, tie.other, "person"),
+          tieEnd(tie.person),
+          tieEnd(tie.other),
           tie.type,
           tie.relation ?? null,
           tie.up ?? null,
@@ -206,7 +290,23 @@ function writeReading(db: DatabaseSync, runId: number, reading: Reading): Ingest
     }
   }
 
+  const membersByKey = new Map(
+    reading.households.flatMap((household) =>
+      household.members.map((member) => [member.key, member] as const),
+    ),
+  );
   for (const doubt of reading.doubts) {
+    if (
+      doubt.person !== undefined &&
+      (doubt.element === "surname" || doubt.element === "given" || doubt.element === "patronymic")
+    ) {
+      const member = membersByKey.get(doubt.person);
+      if (member?.[doubt.element] === undefined) {
+        throw new Error(
+          `doubt about the ${doubt.element} of «${doubt.person}», but the person has no ${doubt.element}: put the most plausible full variant there`,
+        );
+      }
+    }
     insert(
       db,
       `insert into doubt (run_id, scan_id, box_id, element, person_id, place_id, read_text, variants,
