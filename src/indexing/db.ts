@@ -8,9 +8,19 @@ const MIGRATIONS_DIR = join(import.meta.dirname, "migrations");
 
 /** Migration files `NNNN_name.sql`, in order; the schema version is the count applied. */
 function migrationFiles(dir: string): string[] {
-  return readdirSync(dir)
+  const files = readdirSync(dir)
     .filter((name) => /^\d{4}_.+\.sql$/.test(name))
     .toSorted();
+  // The schema version is the count of migrations applied, so a database made with one order of
+  // files would be wrong under another: the numbers must be 0001, 0002 … without gaps or twins.
+  files.forEach((file, i) => {
+    if (Number(file.slice(0, 4)) !== i + 1) {
+      throw new Error(
+        `migrations must be numbered 1, 2, 3 … without gaps or duplicates: ${file} is the ${String(i + 1)}th`,
+      );
+    }
+  });
+  return files;
 }
 
 /** Latest schema version this code knows. */

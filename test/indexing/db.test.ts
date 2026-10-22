@@ -79,6 +79,23 @@ describe("case database", () => {
     ).toBe(1);
   });
 
+  it("refuses migrations with a twin number or a gap, since the version is their count", () => {
+    const dir = mkdtempSync(join(tmpdir(), "indexing-migrations-"));
+    writeFileSync(join(dir, "0001_a.sql"), "create table t (id integer primary key) strict;");
+    writeFileSync(join(dir, "0002_b.sql"), "alter table t add column a text;");
+    writeFileSync(join(dir, "0002_c.sql"), "alter table t add column b text;");
+    expect(() => {
+      migrate(new DatabaseSync(":memory:"), dir);
+    }).toThrow(/without gaps or duplicates: 0002_c.sql is the 3th/);
+    rmSync(join(dir, "0002_c.sql"));
+    rmSync(join(dir, "0002_b.sql"));
+    writeFileSync(join(dir, "0003_d.sql"), "alter table t add column c text;");
+    expect(() => {
+      migrate(new DatabaseSync(":memory:"), dir);
+    }).toThrow(/0003_d.sql is the 2th/);
+    rmSync(dir, { recursive: true });
+  });
+
   it("refuses a database newer than the code", () => {
     const db = new DatabaseSync(":memory:");
     db.exec(`pragma user_version = ${String(SCHEMA_VERSION + 1)}`);
