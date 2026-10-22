@@ -110,8 +110,8 @@ export function caseHref(caseName: string, set: ReviewSet, query = ""): string {
 }
 
 function shell(title: string, body: string): string {
-  const bar = `<div class="g-bar"><a class="brand" href="/">Гортач</a><span class="fine">перегляд індексування</span></div>`;
-  return page("uk", `${title} · Гортач`, `<div class="wrap">${bar}${body}</div>`, STYLE);
+  const bar = `<div class="g-bar"><a class="brand" href="/">Гортач-Виправляч</a><span class="fine">перегляд індексування</span></div>`;
+  return page("uk", `${title} · Гортач-Виправляч`, `<div class="wrap">${bar}${body}</div>`, STYLE);
 }
 
 export function casesPage(cases: readonly string[]): string {
@@ -171,7 +171,8 @@ function keep(ctx: CardContext): string {
 
 function cropHtml(ctx: CardContext, item: ReviewItem): string {
   if (item.boxFile !== null && ctx.hasCrop(item.boxFile)) {
-    return `<img src="/c/${encodeURIComponent(ctx.caseName)}/box/${encodeURIComponent(item.boxFile)}" alt="вирізка" loading="lazy">`;
+    const src = `/c/${encodeURIComponent(ctx.caseName)}/box/${encodeURIComponent(item.boxFile)}`;
+    return `<a href="${src}" target="_blank" rel="noopener" title="відкрити окремо"><img src="${src}" alt="вирізка" loading="lazy"></a>`;
   }
   return `<p class="nocrop">вирізки немає</p>`;
 }

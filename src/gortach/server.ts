@@ -282,5 +282,6 @@ function act(
     default:
       throw new NotFound();
   }
-  return `${tab}#i${String(id)}`;
+  // No anchor: a reviewed item moves below the open ones, so the next open one is at the top.
+  return tab;
 }

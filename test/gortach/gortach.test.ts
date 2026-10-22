@@ -147,7 +147,7 @@ describe("pages", () => {
     expect(html).toContain("Сумніви 0 / 4");
     expect(html).toContain("Вибірка 0 / 3");
     expect(html).toContain('href="https://example.org/n_1" target="_blank" rel="noopener"');
-    expect(html).toContain("/c/case-a/box/n_1-d1.jpg");
+    expect(html).toContain('<a href="/c/case-a/box/n_1-d1.jpg" target="_blank" rel="noopener"');
     expect(html).toContain("вирізки немає");
   });
 
@@ -187,7 +187,7 @@ describe("actions", () => {
   it("fixes a surname: 303 back to the card, database changed, red card", async () => {
     const response = await post(`/c/${CASE}/doubts/1/fix`, { value: "Заицевскій", note: "ok" });
     expect(response.status).toBe(303);
-    expect(response.headers.get("location")).toBe(`/c/${CASE}/doubts#i1`);
+    expect(response.headers.get("location")).toBe(`/c/${CASE}/doubts`);
     expect(rows("select surname from person where given = 'Тарас'")).toEqual([
       { surname: "Заицевскій" },
     ]);
@@ -205,7 +205,7 @@ describe("actions", () => {
       f_element: "age",
       f_status: "open",
     });
-    expect(response.headers.get("location")).toBe(`/c/${CASE}/doubts?element=age&status=open#i4`);
+    expect(response.headers.get("location")).toBe(`/c/${CASE}/doubts?element=age&status=open`);
     const html = await (await get(`/c/${CASE}/doubts`)).text();
     expect(articleOf(html, 4)).toContain("tone-ok");
   });
