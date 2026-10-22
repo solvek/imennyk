@@ -171,6 +171,7 @@ function writeReading(db: DatabaseSync, runId: number, reading: Reading): Ingest
   }
 
   const personIds = new Map<string, number>();
+  const personBoxes = new Map<string, number | null>();
   for (const household of reading.households) {
     const heads = household.members.filter((member) => member.head);
     const continued =
@@ -213,6 +214,7 @@ function writeReading(db: DatabaseSync, runId: number, reading: Reading): Ingest
       );
       addAttributes("person_id", id, member.attributes, memberBox);
       personIds.set(member.key, id);
+      personBoxes.set(member.key, memberBox);
       memberIds.set(member.key, id);
       counts.persons += 1;
       for (const [kind, text, partBox] of [
@@ -315,7 +317,8 @@ function writeReading(db: DatabaseSync, runId: number, reading: Reading): Ingest
       [
         runId,
         scanId,
-        boxId(doubt.box),
+        boxId(doubt.box) ??
+          (doubt.person === undefined ? null : (personBoxes.get(doubt.person) ?? null)),
         doubt.element,
         doubt.person === undefined ? null : lookup(personIds, doubt.person, "person"),
         doubt.place === undefined ? null : lookup(placeIds, doubt.place, "place"),

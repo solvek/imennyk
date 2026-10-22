@@ -212,6 +212,21 @@ describe("doubts and scan attributes", () => {
     expect(n(db, "person")).toBe(0);
   });
 
+  it("gives a doubt without its own box the box of the person", () => {
+    const { db, run } = setup();
+    ingestReading(db, run, {
+      ...reading,
+      doubts: [{ element: "surname", person: "a", read: "Кравчук", variants: "Кравчук / Кравчук" }],
+    });
+    expect(
+      selectRows(
+        db,
+        z.object({ w: z.number() }),
+        "select b.w from doubt d join box b on b.id = d.box_id",
+      )[0]?.w,
+    ).toBe(500);
+  });
+
   it("rejects a doubt about a name the person does not have", () => {
     const { db, run } = setup();
     const bad = { ...reading, doubts: [{ element: "patronymic", person: "b", read: "x" }] };

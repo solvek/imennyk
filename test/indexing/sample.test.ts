@@ -92,7 +92,7 @@ describe("crops", () => {
       },
     );
     expect(files).toHaveLength(6);
-    expect(files[0]).toMatch(/boxes\/n_1-d1\.png$/);
+    expect(files[0]).toMatch(/boxes\/n_1-d1\.jpg$/);
     expect(files.every((file) => existsSync(file))).toBe(true);
     expect(cuts[0]).toEqual({ x: 0, y: 0, w: 50, h: 20 });
   });
