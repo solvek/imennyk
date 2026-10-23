@@ -4,6 +4,7 @@ import { z } from "zod";
 import { openCaseDb, selectRows } from "../../../src/genealogy/indexing/db.ts";
 import { birthRange, ingestReading } from "../../../src/genealogy/indexing/ingest.ts";
 import { savePulled } from "../../../src/genealogy/indexing/pull.ts";
+import { startRun } from "../../../src/genealogy/indexing/run.ts";
 
 function setup(): { db: DatabaseSync; run: number } {
   const db = openCaseDb(":memory:");
@@ -70,6 +71,7 @@ describe("ingestReading", () => {
       nameMentions: 6,
       doubts: 1,
       dictionary: 0,
+      dictionarySkipped: [],
       attributes: 0,
     });
     const [event] = selectRows(
@@ -178,6 +180,65 @@ describe("ingestReading", () => {
     expect(ingestReading(db, run, withWords).dictionary).toBe(1);
     expect(ingestReading(db, run, withWords).dictionary).toBe(0);
     expect(n(db, "dict_entry")).toBe(1);
+  });
+
+  it("adds to the dictionary in a second run and keeps the words that are there", () => {
+    const { db, run } = setup();
+    ingestReading(db, run, {
+      ...reading,
+      dictionary: [{ kind: "given", word: "Вѣра", canon: "Віра", note: "перший" }],
+    });
+    const second = startRun(db, { startedAt: "2026-10-23T10:00:00Z", model: "other" });
+    const result = ingestReading(db, second, {
+      ...reading,
+      dictionary: [
+        { kind: "given", word: "Вѣра", canon: "Віра" },
+        { kind: "given", word: "Параска", canon: "Параска" },
+      ],
+    });
+    expect(result.dictionary).toBe(1);
+    expect(result.dictionarySkipped).toEqual([]);
+    expect(
+      selectRows(
+        db,
+        z.object({ word: z.string(), canon: z.string().nullable(), note: z.string().nullable() }),
+        "select word, canon, note from dict_entry order by word",
+      ),
+    ).toEqual([
+      { word: "Вѣра", canon: "Віра", note: "перший" },
+      { word: "Параска", canon: "Параска", note: null },
+    ]);
+  });
+
+  it("names a word that is offered with another canon and keeps the one in the dictionary", () => {
+    const { db, run } = setup();
+    ingestReading(db, run, {
+      ...reading,
+      dictionary: [
+        { kind: "given", word: "Ольга", canon: "Ольга" },
+        { kind: "given", word: "Анна" },
+      ],
+    });
+    const result = ingestReading(db, run, {
+      ...reading,
+      dictionary: [
+        { kind: "given", word: "Ольга", canon: "Олена" },
+        { kind: "given", word: "Анна", canon: "Ганна" },
+        { kind: "surname", word: "Ольга", canon: "Олена" },
+      ],
+    });
+    expect(result.dictionary).toBe(1);
+    expect(result.dictionarySkipped).toEqual([
+      { kind: "given", word: "Ольга", canon: "Ольга", proposed: "Олена" },
+      { kind: "given", word: "Анна", canon: null, proposed: "Ганна" },
+    ]);
+    expect(
+      selectRows(
+        db,
+        z.object({ canon: z.string().nullable() }),
+        "select canon from dict_entry where kind = 'given' order by word",
+      ),
+    ).toEqual([{ canon: null }, { canon: "Ольга" }]);
   });
 
   it("records an unreadable word and requires its visible letters in note or read", () => {

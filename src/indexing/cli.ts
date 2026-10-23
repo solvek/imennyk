@@ -5,6 +5,7 @@ import { basename, join } from "node:path";
 import { parseArgs } from "node:util";
 import { z } from "zod";
 import { dumpCaseDb } from "./dump.ts";
+import { caseHints, formatHints, parseNameKind } from "./hints.ts";
 import { openCaseDb, selectRows } from "./db.ts";
 import { ingestReading } from "./ingest.ts";
 import { startRun, writeRunReport } from "./run.ts";
@@ -17,6 +18,7 @@ const USAGE = `usage: pnpm indexing <command> <case dir> [options]
   run-start --model M [--session S] [--effort E] [--sha SHA] [--note N]   print the run id
   ingest <run id> <reading.json>      write the reading of one scan
   sample <run id>                     build (once per run) and print the sample of its surname places
+  hints [--kind given|patronymic|surname]   print the dictionary and the names already read in this case
   run-report <run id>                 write run-<datetime>.yaml
   dump <file.sqlite>                  text dump for git diff (the first argument is the file)`;
 
@@ -46,6 +48,7 @@ function main(argv: string[]): void {
       effort: { type: "string" },
       sha: { type: "string" },
       note: { type: "string" },
+      kind: { type: "string" },
     },
   });
   const [command, caseDir, arg] = positionals;
@@ -103,6 +106,11 @@ function main(argv: string[]): void {
       )[0];
       const ids = buildSample(db, stored?.value ?? seed, runIdOf(arg));
       console.log(`sample: ${String(ids.length)} places`);
+      return;
+    }
+    case "hints": {
+      const kind = parseNameKind(values.kind);
+      process.stdout.write(formatHints(caseHints(db, kind === undefined ? {} : { kind })));
       return;
     }
     case "run-report":

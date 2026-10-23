@@ -4,6 +4,16 @@ import { z } from "zod";
 import { inTransaction, selectRows } from "./db.ts";
 import { type Box, type Reading, readingSchema } from "./reading.ts";
 
+/** A word of the reading that the dictionary of the case kept as it was: it has another `canon`. */
+export interface DictionarySkip {
+  readonly kind: string;
+  readonly word: string;
+  /** The `canon` the dictionary has for the word; null when it has none. */
+  readonly canon: string | null;
+  /** The `canon` the reading offered. */
+  readonly proposed: string;
+}
+
 export interface IngestResult {
   readonly lines: number;
   readonly places: number;
@@ -13,6 +23,8 @@ export interface IngestResult {
   readonly nameMentions: number;
   readonly doubts: number;
   readonly dictionary: number;
+  /** Words offered with a `canon` that differs from the one already in the dictionary. */
+  readonly dictionarySkipped: readonly DictionarySkip[];
   readonly attributes: number;
 }
 
@@ -334,12 +346,33 @@ function writeReading(db: DatabaseSync, runId: number, reading: Reading): Ingest
     counts.doubts += 1;
   }
 
+  // The dictionary belongs to the case and every run adds to it: a new word is added, a word that
+  // is there stays as it is, and one offered with another `canon` is named in the result.
+  const dictionarySkipped: DictionarySkip[] = [];
   for (const entry of reading.dictionary) {
-    const changes = db
-      .prepare("insert or ignore into dict_entry (kind, word, canon, note) values (?, ?, ?, ?)")
-      .run(entry.kind, entry.word, entry.canon ?? null, entry.note ?? null).changes;
-    counts.dictionary += Number(changes);
+    const existing = selectRows(
+      db,
+      z.object({ canon: z.string().nullable() }),
+      "select canon from dict_entry where kind = ? and word = ?",
+      [entry.kind, entry.word],
+    )[0];
+    if (existing === undefined) {
+      db.prepare("insert into dict_entry (kind, word, canon, note) values (?, ?, ?, ?)").run(
+        entry.kind,
+        entry.word,
+        entry.canon ?? null,
+        entry.note ?? null,
+      );
+      counts.dictionary += 1;
+    } else if (entry.canon !== undefined && entry.canon !== existing.canon) {
+      dictionarySkipped.push({
+        kind: entry.kind,
+        word: entry.word,
+        canon: existing.canon,
+        proposed: entry.canon,
+      });
+    }
   }
 
-  return counts;
+  return { ...counts, dictionarySkipped };
 }
