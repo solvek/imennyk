@@ -16,7 +16,7 @@ const USAGE = `usage: pnpm indexing <command> <case dir> [options]
   scans <scans.json>                  add scans: [{name, url, width, height, md5?}]
   run-start --model M [--session S] [--effort E] [--sha SHA] [--note N]   print the run id
   ingest <run id> <reading.json>      write the reading of one scan
-  sample                              build (once) and print the sample of surname places
+  sample <run id>                     build (once per run) and print the sample of its surname places
   run-report <run id>                 write run-<datetime>.yaml
   dump <file.sqlite>                  text dump for git diff (the first argument is the file)`;
 
@@ -101,7 +101,7 @@ function main(argv: string[]): void {
         z.object({ value: z.string() }),
         "select value from meta where key = 'sample_seed'",
       )[0];
-      const ids = buildSample(db, stored?.value ?? seed);
+      const ids = buildSample(db, stored?.value ?? seed, runIdOf(arg));
       console.log(`sample: ${String(ids.length)} places`);
       return;
     }
@@ -112,6 +112,13 @@ function main(argv: string[]): void {
       console.log(USAGE);
       process.exitCode = 1;
   }
+}
+
+function runIdOf(value: string | undefined): number {
+  const id = Number(requireArg(value, "run id"));
+  if (!Number.isInteger(id) || id < 1)
+    throw new Error(`run id must be a whole number: ${String(value)}`);
+  return id;
 }
 
 function requireArg(value: string | undefined, name: string): string {

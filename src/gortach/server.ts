@@ -11,6 +11,7 @@ import {
   fixName,
   listCases,
   listItems,
+  listRuns,
   progress,
   recordErrorRate,
   recordedErrorRate,
@@ -18,6 +19,7 @@ import {
   setStatus,
   type ItemFilter,
   type ReviewSet,
+  type RunSummary,
 } from "../../genealogy/indexing/review.ts";
 import { caseHref, casePage, casesPage, errorPage, noDatabasePage } from "./pages.ts";
 
@@ -82,8 +84,24 @@ function filterOf(params: URLSearchParams, prefix: string): ItemFilter {
   };
 }
 
-function query(filter: ItemFilter): string {
+/** The run asked for (`run` parameter or field), the latest one when none is named. */
+function chooseRun(runs: readonly RunSummary[], value: string | null | undefined): number | null {
+  const latest = runs.at(-1);
+  if (latest === undefined) return null;
+  if (value === null || value === undefined || value === "") return latest.id;
+  const id = whole(value);
+  if (id === undefined || !runs.some((run) => run.id === id)) throw new NotFound();
+  return id;
+}
+
+/** The run is named in links and forms only when the case has several. */
+function shownRun(runs: readonly RunSummary[], run: number | null): number | null {
+  return runs.length > 1 ? run : null;
+}
+
+function query(filter: ItemFilter, run: number | null): string {
   const params = new URLSearchParams();
+  if (run !== null) params.set("run", String(run));
   if (filter.element !== undefined) params.set("element", filter.element);
   if (filter.status !== undefined) params.set("status", filter.status);
   const text = params.toString();
@@ -194,18 +212,25 @@ function showCase(
   params: URLSearchParams,
 ): string {
   const filter = set === "doubt" ? filterOf(params, "") : {};
+  const runs = listRuns(db);
+  const run = chooseRun(runs, params.get("run"));
+  // A case without runs has nothing to show: no run has the id 0.
+  const runId = run ?? 0;
   return casePage({
     caseName,
     set,
-    items: listItems(db, set, filter),
-    doubts: progress(db, "doubt"),
-    sample: progress(db, "sample"),
+    runs,
+    run,
+    items: listItems(db, set, runId, filter),
+    doubts: progress(db, "doubt", runId),
+    sample: progress(db, "sample", runId),
     filter,
     rawCount: rawFiles(join(options.root, caseName)).length,
-    recorded: recordedErrorRate(db, join(options.root, caseName)),
+    recorded: recordedErrorRate(db, join(options.root, caseName), runId),
     context: {
       caseName,
       filter,
+      run: shownRun(runs, run),
       hasScan: (file) => existsSync(join(options.root, caseName, "raw", file)),
     },
   });
@@ -221,16 +246,19 @@ function act(
   form: URLSearchParams,
 ): string {
   const filter = filterOf(form, "f_");
-  const tab = caseHref(caseName, set, query(filter));
+  const runs = listRuns(db);
+  const run = chooseRun(runs, form.get("run"));
+  if (run === null) throw new NotFound();
+  const tab = caseHref(caseName, set, query(filter, shownRun(runs, run)));
   if (set === "sample" && rest.length === 1 && rest[0] === "rate") {
-    recordErrorRate(db, caseDir);
+    recordErrorRate(db, caseDir, run);
     return tab;
   }
   const id = whole(rest[0]);
   const action = rest[1];
   if (id === undefined || action === undefined || rest.length !== 2) throw new NotFound();
   const ref = { set, id } as const;
-  if (findItem(db, ref) === undefined) throw new NotFound();
+  if (findItem(db, ref, run) === undefined) throw new NotFound();
   const note = form.get("note") ?? undefined;
   switch (action) {
     case "status": {
@@ -242,7 +270,7 @@ function act(
     case "fix": {
       const value = (form.get("value") ?? "").trim();
       // Saving the value as it is changes nothing: only a different value is a fix.
-      if (value !== findItem(db, ref)?.currentValue) fixName(db, ref, value, note);
+      if (value !== findItem(db, ref, run)?.currentValue) fixName(db, ref, value, note);
       break;
     }
     case "reopen":

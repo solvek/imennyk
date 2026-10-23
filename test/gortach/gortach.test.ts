@@ -14,7 +14,6 @@ import { parse } from "yaml";
 import { openCaseDb } from "../../src/genealogy/indexing/db.ts";
 import { ingestReading } from "../../src/genealogy/indexing/ingest.ts";
 import { startRun } from "../../src/genealogy/indexing/run.ts";
-import { buildSample } from "../../src/genealogy/indexing/sample.ts";
 import { startGortach, type Gortach } from "../../src/web/gortach/server.ts";
 
 const box = (y: number) => ({ x: 10, y, w: 100, h: 15 });
@@ -58,13 +57,88 @@ function build(name: string, withSample: boolean): void {
       { element: "place", place: "v", read: "Селець", box: box(5) },
     ],
   });
-  if (withSample) buildSample(db, "seed", 3);
+  if (withSample) {
+    // The three places of the surname «Петренко»: the head's comes last because the tests change
+    // it through a doubt, and the tests name the places by rank.
+    const insert = db.prepare(
+      "insert into sample (run_id, name_mention_id, rank) values (?, ?, ?)",
+    );
+    const [head, spouse, child] = db
+      .prepare(
+        "select id from name_mention where kind = 'surname' and text = 'Петренко' order by id",
+      )
+      .all()
+      .map((row) => Number(row.id));
+    [spouse, child, head].forEach((mention, i) => {
+      if (mention !== undefined) insert.run(run, mention, i + 1);
+    });
+  }
+  db.close();
+}
+
+const RUNS_CASE = "case-runs";
+
+/** A case with two runs on one scan: 3 + 3 doubts, a sample of 3 places and one of 2 places. */
+function buildRuns(name: string): void {
+  mkdirSync(join(root, name), { recursive: true });
+  const db = openCaseDb(dbPath(name));
+  db.exec(
+    "insert into scan (name, url, width, height) values ('n_1', 'https://example.org/n_1', 2000, 2000)",
+  );
+  const readings = [
+    { startedAt: "2026-10-22T10:00:00Z", model: "model-one", prefix: "Перший", sampleSize: 3 },
+    {
+      startedAt: "2026-10-23T10:00:00Z",
+      model: "model-two",
+      prefix: "Другий",
+      sampleSize: 2,
+      note: "second parish",
+    },
+  ];
+  for (const reading of readings) {
+    const run = startRun(db, {
+      startedAt: reading.startedAt,
+      model: reading.model,
+      ...(reading.note === undefined ? {} : { note: reading.note }),
+    });
+    ingestReading(db, run, {
+      scan: "n_1",
+      year: 1912,
+      households: [
+        {
+          key: "h",
+          members: [
+            { key: "a", head: true, given: "Тарас", surname: `${reading.prefix}1`, box: box(10) },
+            { key: "b", given: "Марія", surname: `${reading.prefix}2`, box: box(30) },
+            { key: "c", given: "Петро", surname: `${reading.prefix}3`, box: box(50) },
+          ],
+        },
+      ],
+      doubts: [
+        { element: "surname", person: "a", read: `${reading.prefix}1`, box: box(10) },
+        { element: "given", person: "b", read: "Марія", box: box(30) },
+        { element: "surname", person: "c", read: `${reading.prefix}3`, box: box(50) },
+      ],
+    });
+    const insert = db.prepare(
+      "insert into sample (run_id, name_mention_id, rank) values (?, ?, ?)",
+    );
+    db.prepare("select id from name_mention where kind = 'surname' and run_id = ? order by id")
+      .all(run)
+      .slice(0, reading.sampleSize)
+      .forEach((row, i) => insert.run(run, Number(row.id), i + 1));
+  }
+  // One place of the first run has been reviewed.
+  db.exec(
+    "update sample set status = 'confirmed', read_text = 'Перший1' where run_id = 1 and rank = 1",
+  );
   db.close();
 }
 
 beforeAll(async () => {
   root = mkdtempSync(join(tmpdir(), "gortach-"));
   build(CASE, true);
+  buildRuns(RUNS_CASE);
   build("case-b", false);
   build("case-c", false);
   mkdirSync(join(root, "case-c", "raw", "keep-folder"), { recursive: true });
@@ -97,8 +171,8 @@ function post(path: string, fields: Record<string, string> = {}): Promise<Respon
   });
 }
 
-function rows(sql: string): Record<string, unknown>[] {
-  const db = openCaseDb(dbPath());
+function rows(sql: string, name = CASE): Record<string, unknown>[] {
+  const db = openCaseDb(dbPath(name));
   try {
     return db
       .prepare(sql)
@@ -309,5 +383,111 @@ describe("actions", () => {
     expect((await post(`/c/${CASE}/doubts/1/bogus`)).status).toBe(404);
     expect((await post(`/c/${CASE}/doubts/2/add-tie`)).status).toBe(404);
     expect((await post(`/c/${CASE}/doubts/2/delete-tie`)).status).toBe(404);
+  });
+});
+
+describe("several runs in one case", () => {
+  it("shows no run picker and no run in the links when the case has one run", async () => {
+    for (const path of [`/c/${CASE}/doubts`, `/c/${CASE}/sample`]) {
+      const html = await (await get(path)).text();
+      expect(html).not.toContain('class="g-runs"');
+      expect(html).not.toContain("run=");
+      expect(html).not.toContain('name="run"');
+    }
+  });
+
+  it("offers every run and shows the latest one by default", async () => {
+    const html = await (await get(`/c/${RUNS_CASE}/sample`)).text();
+    expect(html).toContain('class="g-runs"');
+    expect(html).toContain(`/c/${RUNS_CASE}/sample?run=1`);
+    expect(html).toContain(`/c/${RUNS_CASE}/sample?run=2`);
+    expect(html).toMatch(/aria-current="page"[^>]*>Прогін 2 · model-two · second parish/);
+    expect(html).toContain("Вибірка 0 / 2");
+    expect(html).toContain("Сумніви 0 / 3");
+    expect(html).toContain(`/c/${RUNS_CASE}/doubts?run=2`);
+  });
+
+  it("shows the progress of the run that was asked for", async () => {
+    const html = await (await get(`/c/${RUNS_CASE}/sample?run=1`)).text();
+    expect(html).toMatch(/aria-current="page"[^>]*>Прогін 1 · model-one/);
+    expect(html).toContain("Вибірка 1 / 3");
+    expect(html).toContain("Перший");
+    expect(html).not.toContain("Другий");
+    expect(html).toContain(`/c/${RUNS_CASE}/doubts?run=1`);
+  });
+
+  it("numbers the places of every sample from 1", async () => {
+    const html = await (await get(`/c/${RUNS_CASE}/sample?run=2`)).text();
+    expect(html).toContain("вибірка 1 ·");
+    expect(html).toContain("вибірка 2 ·");
+    expect(html).not.toContain("вибірка 3 ·");
+  });
+
+  it("answers «not found» for a run that does not exist", async () => {
+    expect((await get(`/c/${RUNS_CASE}/sample?run=9`)).status).toBe(404);
+    expect((await get(`/c/${RUNS_CASE}/doubts?run=abc`)).status).toBe(404);
+    expect((await post(`/c/${RUNS_CASE}/sample/rate`, { run: "9" })).status).toBe(404);
+  });
+
+  it("does not act on an item of another run and leaves the database as it was", async () => {
+    const foreign = rows("select id from sample where run_id = 1 order by rank", RUNS_CASE);
+    const id = Number(foreign[0]?.id);
+    const before = rows("select * from sample order by id", RUNS_CASE);
+    const response = await post(`/c/${RUNS_CASE}/sample/${String(id)}/status`, {
+      run: "2",
+      status: "unknown",
+    });
+    expect(response.status).toBe(404);
+    const doubt = Number(rows("select id from doubt where run_id = 1", RUNS_CASE)[0]?.id);
+    expect(
+      (
+        await post(`/c/${RUNS_CASE}/doubts/${String(doubt)}/status`, {
+          run: "2",
+          status: "confirmed",
+        })
+      ).status,
+    ).toBe(404);
+    expect(rows("select * from sample order by id", RUNS_CASE)).toEqual(before);
+    expect(rows("select status from doubt where run_id = 1", RUNS_CASE)).toEqual([
+      { status: "open" },
+      { status: "open" },
+      { status: "open" },
+    ]);
+  });
+
+  it("acts on an item of the chosen run and comes back to that run", async () => {
+    const own = Number(rows("select id from doubt where run_id = 2 order by id", RUNS_CASE)[0]?.id);
+    const response = await post(`/c/${RUNS_CASE}/doubts/${String(own)}/status`, {
+      run: "2",
+      status: "confirmed",
+    });
+    expect(response.status).toBe(303);
+    expect(response.headers.get("location")).toBe(`/c/${RUNS_CASE}/doubts?run=2`);
+    expect(rows("select status from doubt where id = " + String(own), RUNS_CASE)).toEqual([
+      { status: "confirmed" },
+    ]);
+  });
+
+  it("records the error rate of the chosen run only", async () => {
+    const response = await post(`/c/${RUNS_CASE}/sample/rate`, { run: "2" });
+    expect(response.status).toBe(303);
+    expect(response.headers.get("location")).toBe(`/c/${RUNS_CASE}/sample?run=2`);
+    expect(
+      rows(
+        "select run_id, status, count(*) as n from sample group by run_id, status order by run_id, status",
+        RUNS_CASE,
+      ),
+    ).toEqual([
+      { run_id: 1, status: "confirmed", n: 1 },
+      { run_id: 1, status: "open", n: 2 },
+      { run_id: 2, status: "confirmed", n: 2 },
+    ]);
+    const second = join(root, RUNS_CASE, "run-2026-10-23T10-00-00Z.yaml");
+    expect(
+      z
+        .object({ wer: z.number(), sample_size: z.number() })
+        .parse(parse(readFileSync(second, "utf8"))),
+    ).toEqual({ wer: 0, sample_size: 2 });
+    expect(existsSync(join(root, RUNS_CASE, "run-2026-10-22T10-00-00Z.yaml"))).toBe(false);
   });
 });

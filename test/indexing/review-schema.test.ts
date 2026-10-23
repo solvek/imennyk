@@ -15,7 +15,7 @@ function seeded(): DatabaseSync {
     insert into person (id, run_id, scan_id, surname) values (1, 1, 1, 'Іваненко');
     insert into name_mention (id, run_id, scan_id, person_id, kind, text) values (1, 1, 1, 1, 'surname', 'Іваненко');
     insert into doubt (id, run_id, scan_id, element) values (1, 1, 1, 'surname');
-    insert into sample (id, name_mention_id, rank) values (1, 1, 1);
+    insert into sample (id, run_id, name_mention_id, rank) values (1, 1, 1, 1);
   `);
   return db;
 }

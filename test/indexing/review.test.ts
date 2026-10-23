@@ -9,9 +9,11 @@ import { openCaseDb } from "../../../src/genealogy/indexing/db.ts";
 import { ingestReading } from "../../../src/genealogy/indexing/ingest.ts";
 import {
   errorRate,
+  findItem,
   fixName,
   listCases,
   listItems,
+  listRuns,
   progress,
   recordErrorRate,
   recordedErrorRate,
@@ -86,7 +88,7 @@ function fixture(): Fixture {
     ],
     doubts: [{ element: "given", person: "x", read: "Ганна", box: box(30) }],
   });
-  buildSample(db, "seed", 4);
+  buildSample(db, "seed", run, 4);
   return { db, run };
 }
 
@@ -131,10 +133,10 @@ describe("listCases", () => {
 
 describe("listItems and progress", () => {
   it("describes doubts and puts open ones first", () => {
-    const { db } = fixture();
+    const { db, run } = fixture();
     const first = doubtOf(db, "surname", "Тарас");
     setStatus(db, { set: "doubt", id: first }, "confirmed");
-    const items = listItems(db, "doubt");
+    const items = listItems(db, "doubt", run);
     expect(items).toHaveLength(6);
     expect(items.at(-1)?.id).toBe(first);
     const surname = items.find((item) => item.id === first);
@@ -156,16 +158,16 @@ describe("listItems and progress", () => {
   });
 
   it("has no box for a doubt without one, but still the scan", () => {
-    const { db } = fixture();
+    const { db, run } = fixture();
     db.exec("update doubt set box_id = null where id = 1");
-    const items = listItems(db, "doubt").filter((item) => item.box === null);
+    const items = listItems(db, "doubt", run).filter((item) => item.box === null);
     expect(items.map((item) => item.id)).toEqual([1]);
     expect(items[0]?.scanFile).toBe("n_1.jpg");
   });
 
   it("describes places of the sample by their mention", () => {
-    const { db } = fixture();
-    const items = listItems(db, "sample");
+    const { db, run } = fixture();
+    const items = listItems(db, "sample", run);
     expect(items).toHaveLength(4);
     expect(items.map((item) => item.id)).toEqual([1, 2, 3, 4]);
     expect(items.every((item) => item.element === "surname" && item.editable)).toBe(true);
@@ -174,17 +176,17 @@ describe("listItems and progress", () => {
   });
 
   it("filters by element and state", () => {
-    const { db } = fixture();
-    expect(listItems(db, "doubt", { element: "given" })).toHaveLength(2);
+    const { db, run } = fixture();
+    expect(listItems(db, "doubt", run, { element: "given" })).toHaveLength(2);
     setStatus(db, { set: "doubt", id: placeDoubt(db) }, "unknown", "faded");
-    expect(listItems(db, "doubt", { status: "unknown" })).toHaveLength(1);
-    expect(listItems(db, "doubt", { status: "open", element: "place" })).toHaveLength(0);
+    expect(listItems(db, "doubt", run, { status: "unknown" })).toHaveLength(1);
+    expect(listItems(db, "doubt", run, { status: "open", element: "place" })).toHaveLength(0);
   });
 
   it("counts progress overall and by element", () => {
-    const { db } = fixture();
+    const { db, run } = fixture();
     setStatus(db, { set: "doubt", id: placeDoubt(db) }, "confirmed");
-    const result = progress(db, "doubt");
+    const result = progress(db, "doubt", run);
     expect(result).toMatchObject({ total: 6, reviewed: 1 });
     expect(result.byElement.map((row) => row.element)).toEqual([
       "given",
@@ -197,22 +199,23 @@ describe("listItems and progress", () => {
       total: 1,
       reviewed: 1,
     });
-    expect(progress(db, "sample")).toMatchObject({ total: 4, reviewed: 0 });
+    expect(progress(db, "sample", run)).toMatchObject({ total: 4, reviewed: 0 });
   });
 
   it("has no progress for a case without a sample", () => {
     const db = openCaseDb(":memory:");
-    expect(progress(db, "sample")).toEqual({ total: 0, reviewed: 0, byElement: [] });
+    const run = startRun(db, { startedAt: "2026-10-22T10:00:00Z", model: "test-model" });
+    expect(progress(db, "sample", run)).toEqual({ total: 0, reviewed: 0, byElement: [] });
   });
 });
 
 describe.each(SETS)("fixName in the %s set", (set) => {
   it("changes the person and the mentions of the same part, and fixes the item", () => {
-    const { db } = fixture();
+    const { db, run } = fixture();
     const ref = nameRef(db, set);
-    const before = listItems(db, set).find((item) => item.id === ref.id);
+    const before = listItems(db, set, run).find((item) => item.id === ref.id);
     fixName(db, ref, "Заицевскій", "checked");
-    const after = listItems(db, set).find((item) => item.id === ref.id);
+    const after = listItems(db, set, run).find((item) => item.id === ref.id);
     expect(after).toMatchObject({ status: "fixed", note: "checked", currentValue: "Заицевскій" });
     expect(after?.readText).toBe(before?.readText);
     const personId = after?.personId ?? 0;
@@ -226,34 +229,34 @@ describe.each(SETS)("fixName in the %s set", (set) => {
   });
 
   it.each(["Заиц…скій", "Зай?", "", "  ", "а..."])("refuses %j and changes nothing", (value) => {
-    const { db } = fixture();
+    const { db, run } = fixture();
     const ref = nameRef(db, set);
-    const before = JSON.stringify(listItems(db, set));
+    const before = JSON.stringify(listItems(db, set, run));
     expect(() => {
       fixName(db, ref, value);
     }).toThrow();
-    expect(JSON.stringify(listItems(db, set))).toBe(before);
+    expect(JSON.stringify(listItems(db, set, run))).toBe(before);
     expect(db.prepare("select count(*) as n from name_mention where text = ?").get(value)?.n).toBe(
       0,
     );
   });
 
   it("accepts spellings from before the reform", () => {
-    const { db } = fixture();
+    const { db, run } = fixture();
     fixName(db, nameRef(db, set), "Тимощукъ");
-    expect(listItems(db, set).filter((item) => item.status === "fixed")).toHaveLength(1);
+    expect(listItems(db, set, run).filter((item) => item.status === "fixed")).toHaveLength(1);
   });
 });
 
 describe("fixName limits", () => {
   it("refuses a doubt about a place: only name parts are fixed by a value", () => {
-    const { db } = fixture();
+    const { db, run } = fixture();
     const ref = { set: "doubt", id: placeDoubt(db) } as const;
-    expect(listItems(db, "doubt").find((item) => item.id === ref.id)?.editable).toBe(false);
+    expect(listItems(db, "doubt", run).find((item) => item.id === ref.id)?.editable).toBe(false);
     expect(() => {
       fixName(db, ref, "Щось");
     }).toThrow(/can be fixed/);
-    expect(listItems(db, "doubt").find((item) => item.id === ref.id)?.status).toBe("open");
+    expect(listItems(db, "doubt", run).find((item) => item.id === ref.id)?.status).toBe("open");
   });
 
   it("changes the patronymic of a doubt about it", () => {
@@ -299,11 +302,11 @@ describe("fixName limits", () => {
 
 describe.each(SETS)("setStatus and reopen in the %s set", (set) => {
   it("changes the state and the note, not the values", () => {
-    const { db } = fixture();
+    const { db, run } = fixture();
     const ref = nameRef(db, set);
-    const before = listItems(db, set).find((item) => item.id === ref.id);
+    const before = listItems(db, set, run).find((item) => item.id === ref.id);
     setStatus(db, ref, "unknown", "  blurred ");
-    const after = listItems(db, set).find((item) => item.id === ref.id);
+    const after = listItems(db, set, run).find((item) => item.id === ref.id);
     expect(after).toMatchObject({
       status: "unknown",
       note: "blurred",
@@ -311,38 +314,37 @@ describe.each(SETS)("setStatus and reopen in the %s set", (set) => {
     });
     expect(after?.readText).toBe(before?.readText);
     setStatus(db, ref, "confirmed");
-    expect(listItems(db, set).find((item) => item.id === ref.id)).toMatchObject({
+    expect(listItems(db, set, run).find((item) => item.id === ref.id)).toMatchObject({
       status: "confirmed",
       note: null,
     });
   });
 
   it("opens again: state and note go, the fixed value stays", () => {
-    const { db } = fixture();
+    const { db, run } = fixture();
     const ref = nameRef(db, set);
     fixName(db, ref, "Тимощукъ", "note");
     reopen(db, ref);
-    const item = listItems(db, set).find((candidate) => candidate.id === ref.id);
+    const item = listItems(db, set, run).find((candidate) => candidate.id === ref.id);
     expect(item).toMatchObject({ status: "open", note: null, currentValue: "Тимощукъ" });
   });
 });
 
 describe("the reading of a sample place", () => {
-  const place = (db: DatabaseSync) => listItems(db, "sample").find((item) => item.id === 1);
+  const place = (db: DatabaseSync, run: number) =>
+    listItems(db, "sample", run).find((item) => item.id === 1);
 
   it("stays the first reading through fix, reopen and review", () => {
-    const { db } = fixture();
+    const { db, run } = fixture();
     const ref = { set: "sample", id: 1 } as const;
-    const original = place(db)?.readText;
+    const original = place(db, run)?.readText;
     expect(original).toBeDefined();
     fixName(db, ref, "Тимощукъ");
-    expect(place(db)?.readText).toBe(original);
+    expect(place(db, run)?.readText).toBe(original);
     reopen(db, ref);
     setStatus(db, ref, "confirmed");
-    expect(place(db)).toMatchObject({ readText: original, currentValue: "Тимощукъ" });
-    expect(db.prepare("select read_text from sample where rank = 1").get()?.read_text).toBe(
-      original,
-    );
+    expect(place(db, run)).toMatchObject({ readText: original, currentValue: "Тимощукъ" });
+    expect(db.prepare("select read_text from sample where id = 1").get()?.read_text).toBe(original);
   });
 
   it("is not stored for a place nobody reviewed", () => {
@@ -385,7 +387,7 @@ describe("error rate", () => {
         },
       ],
     });
-    buildSample(db, "seed", 20);
+    buildSample(db, "seed", run, 20);
     return { db, run };
   }
 
@@ -396,25 +398,24 @@ describe("error rate", () => {
     fixName(db, { set: "sample", id: 3 }, "В");
     setStatus(db, { set: "sample", id: 4 }, "unknown");
     setStatus(db, { set: "sample", id: 5 }, "confirmed");
-    expect(errorRate(db)).toEqual({ runId: run, size: 20, errors: 4, percent: 20 });
+    expect(errorRate(db, run)).toEqual({ runId: run, size: 20, errors: 4, percent: 20 });
   });
 
   it("rounds to 0.1", () => {
-    const { db } = twenty();
+    const { db, run } = twenty();
     db.exec("delete from sample where rank > 3");
     setStatus(db, { set: "sample", id: 1 }, "unknown");
-    expect(errorRate(db).percent).toBe(33.3);
+    expect(errorRate(db, run).percent).toBe(33.3);
   });
 
-  it("refuses a missing sample and a sample of several runs", () => {
+  it("refuses a run that has no sample, whatever the other runs have", () => {
     const empty = openCaseDb(":memory:");
-    expect(() => errorRate(empty)).toThrow(/not built/);
-    const { db } = twenty();
+    const emptyRun = startRun(empty, { startedAt: "2026-10-22T10:00:00Z", model: "test-model" });
+    expect(() => errorRate(empty, emptyRun)).toThrow(/not built/);
+    const { db, run } = twenty();
     const second = startRun(db, { startedAt: "2026-10-23T10:00:00Z", model: "other" });
-    db.prepare(
-      "update name_mention set run_id = ? where id = (select name_mention_id from sample where rank = 1)",
-    ).run(second);
-    expect(() => errorRate(db)).toThrow(/several runs/);
+    expect(() => errorRate(db, second)).toThrow(/not built/);
+    expect(errorRate(db, run).size).toBe(20);
   });
 
   it("records: open places become correct, the rate goes to the metafile of the run", () => {
@@ -425,31 +426,139 @@ describe("error rate", () => {
     fixName(db, { set: "sample", id: 2 }, "Б");
     fixName(db, { set: "sample", id: 3 }, "В");
     setStatus(db, { set: "sample", id: 4 }, "unknown");
-    const rate = recordErrorRate(db, dir);
+    const rate = recordErrorRate(db, dir, run);
     expect(rate).toMatchObject({ size: 20, errors: 4, percent: 20 });
-    expect(listItems(db, "sample", { status: "confirmed" })).toHaveLength(16);
-    expect(listItems(db, "sample", { status: "open" })).toHaveLength(0);
+    expect(listItems(db, "sample", run, { status: "confirmed" })).toHaveLength(16);
+    expect(listItems(db, "sample", run, { status: "open" })).toHaveLength(0);
     const yaml: unknown = parse(
       readFileSync(join(dir, runFileName("2026-10-22T10:00:00Z")), "utf8"),
     );
     expect(yaml).toMatchObject({ wer: 20, sample_errors: 4, sample_size: 20, model: "test-model" });
-    expect(recordedErrorRate(db, dir)).toEqual({ size: 20, errors: 4, percent: 20 });
+    expect(recordedErrorRate(db, dir, run)).toEqual({ size: 20, errors: 4, percent: 20 });
   });
 
   it("records again after one more fix: 25 %", () => {
-    const { db } = twenty();
+    const { db, run } = twenty();
     const dir = mkdtempSync(join(tmpdir(), "gortach-run-"));
     for (const rank of [1, 2, 3]) fixName(db, { set: "sample", id: rank }, `Нове${String(rank)}`);
     setStatus(db, { set: "sample", id: 4 }, "unknown");
-    recordErrorRate(db, dir);
+    recordErrorRate(db, dir, run);
     fixName(db, { set: "sample", id: 5 }, "Інше");
-    expect(recordErrorRate(db, dir)).toMatchObject({ errors: 5, percent: 25 });
-    expect(recordedErrorRate(db, dir)).toEqual({ size: 20, errors: 5, percent: 25 });
+    expect(recordErrorRate(db, dir, run)).toMatchObject({ errors: 5, percent: 25 });
+    expect(recordedErrorRate(db, dir, run)).toEqual({ size: 20, errors: 5, percent: 25 });
   });
 
   it("has no recorded rate before recording", () => {
-    const { db } = twenty();
-    expect(recordedErrorRate(db, mkdtempSync(join(tmpdir(), "gortach-run-")))).toBeNull();
+    const { db, run } = twenty();
+    expect(recordedErrorRate(db, mkdtempSync(join(tmpdir(), "gortach-run-")), run)).toBeNull();
+  });
+});
+
+describe("several runs in one case", () => {
+  /** The fixture, and a second run that read the first scan again: 2 doubts and a sample of 3. */
+  function twoRuns(): { db: DatabaseSync; first: number; second: number } {
+    const { db, run: first } = fixture();
+    const second = startRun(db, {
+      startedAt: "2026-10-23T10:00:00Z",
+      model: "other-model",
+      note: "second parish",
+    });
+    ingestReading(db, second, {
+      scan: "n_1",
+      year: 1912,
+      households: [
+        {
+          key: "h",
+          members: [
+            { key: "a", head: true, given: "Олена", surname: "Коваль", box: box(10) },
+            { key: "b", given: "Марко", surname: "Коваль", box: box(30) },
+            { key: "c", given: "Ілько", surname: "Мазур", box: box(50) },
+          ],
+        },
+      ],
+      doubts: [
+        { element: "surname", person: "a", read: "Коваль", box: box(10) },
+        { element: "given", person: "b", read: "Марко", box: box(30) },
+      ],
+    });
+    buildSample(db, "seed", second, 3);
+    return { db, first, second };
+  }
+
+  it("lists the runs with their model and note", () => {
+    const { db, first, second } = twoRuns();
+    expect(listRuns(db)).toEqual([
+      { id: first, model: "test-model", note: null, startedAt: "2026-10-22T10:00:00Z" },
+      {
+        id: second,
+        model: "other-model",
+        note: "second parish",
+        startedAt: "2026-10-23T10:00:00Z",
+      },
+    ]);
+  });
+
+  it("keeps items and progress of every run apart, with ranks counted in each sample", () => {
+    const { db, first, second } = twoRuns();
+    expect(listItems(db, "doubt", first)).toHaveLength(6);
+    expect(listItems(db, "doubt", second)).toHaveLength(2);
+    expect(listItems(db, "sample", first).map((item) => item.rank)).toEqual([1, 2, 3, 4]);
+    expect(listItems(db, "sample", second).map((item) => item.rank)).toEqual([1, 2, 3]);
+    const ids = [...listItems(db, "sample", first), ...listItems(db, "sample", second)].map(
+      (item) => item.id,
+    );
+    expect(new Set(ids).size).toBe(7);
+
+    const doubt = listItems(db, "doubt", second)[0];
+    expect(doubt).toBeDefined();
+    if (doubt === undefined) return;
+    setStatus(db, { set: "doubt", id: doubt.id }, "confirmed");
+    expect(progress(db, "doubt", first)).toMatchObject({ total: 6, reviewed: 0 });
+    expect(progress(db, "doubt", second)).toMatchObject({ total: 2, reviewed: 1 });
+    expect(progress(db, "sample", first)).toMatchObject({ total: 4, reviewed: 0 });
+    expect(progress(db, "sample", second)).toMatchObject({ total: 3, reviewed: 0 });
+  });
+
+  it("does not find an item through another run", () => {
+    const { db, first, second } = twoRuns();
+    for (const set of ["doubt", "sample"] as const) {
+      const ofFirst = listItems(db, set, first)[0];
+      const ofSecond = listItems(db, set, second)[0];
+      expect(ofFirst).toBeDefined();
+      expect(ofSecond).toBeDefined();
+      if (ofFirst === undefined || ofSecond === undefined) return;
+      expect(findItem(db, { set, id: ofFirst.id }, first)?.id).toBe(ofFirst.id);
+      expect(findItem(db, { set, id: ofFirst.id }, second)).toBeUndefined();
+      expect(findItem(db, { set, id: ofSecond.id }, first)).toBeUndefined();
+    }
+  });
+
+  it("counts the error rate of each run on its own sample", () => {
+    const { db, first, second } = twoRuns();
+    const ofSecond = listItems(db, "sample", second)[0];
+    if (ofSecond === undefined) throw new Error("no place in the sample of the second run");
+    setStatus(db, { set: "sample", id: ofSecond.id }, "unknown");
+    expect(errorRate(db, first)).toEqual({ runId: first, size: 4, errors: 0, percent: 0 });
+    expect(errorRate(db, second)).toEqual({ runId: second, size: 3, errors: 1, percent: 33.3 });
+  });
+
+  it("records the rate of one run without touching the other run or its metafile", () => {
+    const { db, first, second } = twoRuns();
+    const dir = mkdtempSync(join(tmpdir(), "gortach-run-"));
+    const firstFile = writeRunReport(db, first, dir);
+    const secondFile = writeRunReport(db, second, dir);
+    const firstBefore = readFileSync(firstFile, "utf8");
+    const ofSecond = listItems(db, "sample", second)[0];
+    if (ofSecond === undefined) throw new Error("no place in the sample of the second run");
+    fixName(db, { set: "sample", id: ofSecond.id }, "Нове");
+
+    expect(recordErrorRate(db, dir, second)).toMatchObject({ runId: second, errors: 1 });
+    expect(listItems(db, "sample", second, { status: "open" })).toHaveLength(0);
+    expect(listItems(db, "sample", first, { status: "open" })).toHaveLength(4);
+    expect(readFileSync(firstFile, "utf8")).toBe(firstBefore);
+    expect(yamlOf(secondFile)).toMatchObject({ wer: 33.3, sample_errors: 1, sample_size: 3 });
+    expect(recordedErrorRate(db, dir, first)).toBeNull();
+    expect(recordedErrorRate(db, dir, second)).toEqual({ size: 3, errors: 1, percent: 33.3 });
   });
 });
 

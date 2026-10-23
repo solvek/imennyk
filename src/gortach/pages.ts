@@ -8,6 +8,7 @@ import {
   type ReviewItem,
   type ReviewSet,
   type ReviewStatus,
+  type RunSummary,
 } from "../../genealogy/indexing/review.ts";
 
 const STYLE = `<style>
@@ -15,6 +16,9 @@ const STYLE = `<style>
   html[data-theme="night"] { --danger-tint: #3a2220; }
   .g-bar { display: flex; align-items: baseline; gap: 16px; padding: 16px 0 4px; }
   .g-bar a.brand { font: 500 22px var(--serif); color: inherit; text-decoration: none; }
+  .g-runs { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0; }
+  .g-runs a { padding: 4px 10px; border: 1px solid var(--line); border-radius: 6px; color: inherit; text-decoration: none; background: var(--card); }
+  .g-runs a[aria-current="page"] { border-color: var(--grape); font-weight: 600; }
   .g-tabs { display: flex; gap: 20px; margin: 8px 0 16px; border-bottom: 1px solid var(--line); }
   .g-tabs a { padding: 8px 2px; color: inherit; text-decoration: none; }
   .g-tabs a[aria-current="page"] { border-bottom: 2px solid var(--grape); font-weight: 600; }
@@ -124,15 +128,28 @@ function meter(reviewed: number, total: number): string {
   return `<span class="bar"><i style="width:${String(percent)}%"></i></span><span>${String(reviewed)} / ${String(total)}</span>`;
 }
 
-function tabs(caseName: string, active: ReviewSet, doubts: Progress, sample: Progress): string {
+/** `?run=N` for the links of a case that shows several runs; nothing when it has one. */
+export function runQuery(run: number | null): string {
+  return run === null ? "" : `?run=${String(run)}`;
+}
+
+function tabs(
+  caseName: string,
+  active: ReviewSet,
+  doubts: Progress,
+  sample: Progress,
+  run: number | null,
+): string {
   const tab = (set: ReviewSet, label: string, p: Progress): string =>
-    `<a href="${esc(caseHref(caseName, set))}"${set === active ? ' aria-current="page"' : ""}>${label} ${String(p.reviewed)} / ${String(p.total)}</a>`;
+    `<a href="${esc(caseHref(caseName, set, runQuery(run)))}"${set === active ? ' aria-current="page"' : ""}>${label} ${String(p.reviewed)} / ${String(p.total)}</a>`;
   return `<nav class="g-tabs">${tab("doubt", "Сумніви", doubts)}${tab("sample", "Вибірка", sample)}</nav>`;
 }
 
 export interface CardContext {
   readonly caseName: string;
   readonly filter: ItemFilter;
+  /** The run the page shows, or null when the case has a single run and the page does not name it. */
+  readonly run: number | null;
   /** Whether the full scan is in `raw/`. */
   readonly hasScan: (file: string) => boolean;
 }
@@ -146,7 +163,8 @@ function actionUrl(ctx: CardContext, item: ReviewItem, action: string): string {
 }
 
 function keep(ctx: CardContext): string {
-  return `${hidden("f_element", ctx.filter.element ?? "")}${hidden("f_status", ctx.filter.status ?? "")}`;
+  const run = ctx.run === null ? "" : hidden("run", String(ctx.run));
+  return `${run}${hidden("f_element", ctx.filter.element ?? "")}${hidden("f_status", ctx.filter.status ?? "")}`;
 }
 
 const VIEWPORT_SCRIPT = `<script>
@@ -281,13 +299,17 @@ export function card(ctx: CardContext, item: ReviewItem): string {
     lines.splice(1, 0, `<div class="meta">зараз у базі: ${esc(item.currentValue)}</div>`);
   }
   return `<article class="item${toneClass}" id="i${String(item.id)}">
-    <h3>${esc(item.set === "doubt" ? `сумнів ${String(item.id)}` : `вибірка ${String(item.id)}`)} · ${esc(elementLabel(item.element))}</h3>
+    <h3>${esc(item.set === "doubt" ? `сумнів ${String(item.id)}` : `вибірка ${String(item.rank ?? item.id)}`)} · ${esc(elementLabel(item.element))}</h3>
     ${lines.join("")}${scanHtml(ctx, item)}${actions(ctx, item)}</article>`;
 }
 
 export interface CasePage {
   readonly caseName: string;
   readonly set: ReviewSet;
+  /** Runs of the case; the picker is shown when there are several. */
+  readonly runs: readonly RunSummary[];
+  /** The run shown; null for a case without runs. */
+  readonly run: number | null;
   readonly items: readonly ReviewItem[];
   readonly doubts: Progress;
   readonly sample: Progress;
@@ -314,6 +336,7 @@ function filterForm(data: CasePage): string {
       `<option value="${status}"${data.filter.status === status ? " selected" : ""}>${STATUS_FILTER_LABELS[status]}</option>`,
   ).join("");
   return `<form class="g-filter" method="get" action="${esc(caseHref(data.caseName, "doubt"))}">
+    ${data.context.run === null ? "" : hidden("run", String(data.context.run))}
     <select name="element"><option value="">усі типи</option>${elements}</select>
     <select name="status"><option value="">усі стани</option>${statuses}</select>
     <button>показати</button></form>`;
@@ -326,8 +349,21 @@ function sampleHead(data: CasePage): string {
       ? "відсоток ще не записано"
       : `записано: ${String(data.recorded.percent)} % (${String(data.recorded.errors)} з ${String(data.recorded.size)})`;
   return `<form class="g-record" method="post" action="/c/${encodeURIComponent(data.caseName)}/sample/rate">
-      <button>Записати</button><span>робить відкриті місця «правильно» й записує відсоток помилок у <code>run-*.yaml</code></span>
+      ${data.context.run === null ? "" : hidden("run", String(data.context.run))}<button>Записати</button><span>робить відкриті місця «правильно» й записує відсоток помилок у <code>run-*.yaml</code></span>
       <span>${esc(recorded)}</span></form>`;
+}
+
+function runPicker(data: CasePage): string {
+  if (data.runs.length < 2) return "";
+  const links = data.runs
+    .map((run) => {
+      const label = [`Прогін ${String(run.id)}`, run.model, run.note ?? ""]
+        .filter(Boolean)
+        .join(" · ");
+      return `<a href="${esc(caseHref(data.caseName, data.set, runQuery(run.id)))}"${run.id === data.run ? ' aria-current="page"' : ""} title="${esc(run.startedAt)}">${esc(label)}</a>`;
+    })
+    .join("");
+  return `<nav class="g-runs" aria-label="Прогони">${links}</nav>`;
 }
 
 export function casePage(data: CasePage): string {
@@ -338,7 +374,8 @@ export function casePage(data: CasePage): string {
       ? ""
       : `<form class="g-wipe" method="post" action="/c/${encodeURIComponent(data.caseName)}/raw/wipe" onsubmit="return confirm('Витерти всі скани (${String(data.rawCount)}) з raw/ цієї справи? Скачати їх знову можна, але це довго.')"><button class="bad">Витерти скани (${String(data.rawCount)})</button></form>`;
   const body = `<div class="g-title"><h1>${esc(data.caseName)}</h1>${wipe}</div>
-    ${tabs(data.caseName, data.set, data.doubts, data.sample)}
+    ${runPicker(data)}
+    ${tabs(data.caseName, data.set, data.doubts, data.sample, data.context.run)}
     <div class="g-meter">${meter(active.reviewed, active.total)}</div>
     ${head}
     ${data.items.map((item) => card(data.context, item)).join("\n")}`;

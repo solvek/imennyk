@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -102,6 +102,141 @@ describe("case database", () => {
     expect(() => {
       migrate(db);
     }).toThrow(/newer than the code/);
+  });
+});
+
+const MIGRATIONS = join(import.meta.dirname, "../../../src/genealogy/indexing/migrations");
+
+const sampleRow = z.object({
+  id: z.number(),
+  name_mention_id: z.number(),
+  rank: z.number(),
+  status: z.string(),
+  note: z.string().nullable(),
+  read_text: z.string().nullable(),
+});
+const SAMPLE_COLUMNS = "id, name_mention_id, rank, status, note, read_text";
+
+/** A surname mention of a new person of `run`; returns the mention id. */
+function addMention(db: DatabaseSync, scan: number, run: number, text: string): number {
+  const { lastInsertRowid: person } = db
+    .prepare("insert into person (run_id, scan_id) values (?, ?)")
+    .run(run, scan);
+  const { lastInsertRowid: mention } = db
+    .prepare(
+      "insert into name_mention (run_id, scan_id, person_id, kind, text) values (?, ?, ?, 'surname', ?)",
+    )
+    .run(run, scan, person, text);
+  return Number(mention);
+}
+
+/**
+ * A database as it was before the sample belonged to a run (schema version 8), with two runs and
+ * a sample that has been reviewed: places in every state, ids that differ from the ranks.
+ */
+function databaseBeforeSamplePerRun() {
+  const dir = mkdtempSync(join(tmpdir(), "indexing-v8-"));
+  for (const file of readdirSync(MIGRATIONS).filter((name) => name < "0009")) {
+    copyFileSync(join(MIGRATIONS, file), join(dir, file));
+  }
+  const db = new DatabaseSync(":memory:");
+  db.exec("pragma foreign_keys = on");
+  migrate(db, dir);
+  rmSync(dir, { recursive: true });
+  const scan = addScan(db);
+  const run1 = addRun(db);
+  const run2 = addRun(db);
+  const places = [
+    { id: 1, run: run1, rank: 1, status: "open", note: null, read: null },
+    { id: 2, run: run1, rank: 2, status: "fixed", note: "виправлено", read: "Старе" },
+    { id: 4, run: run2, rank: 3, status: "unknown", note: null, read: "Па…никъ" },
+    { id: 7, run: run2, rank: 4, status: "confirmed", note: "ok", read: "Гнатюкъ" },
+  ];
+  for (const place of places) {
+    const mention = addMention(db, scan, place.run, `Прізвище${String(place.id)}`);
+    db.prepare(
+      "insert into sample (id, name_mention_id, rank, status, note, read_text) values (?, ?, ?, ?, ?, ?)",
+    ).run(place.id, mention, place.rank, place.status, place.note, place.read);
+  }
+  const before = selectRows(db, sampleRow, `select ${SAMPLE_COLUMNS} from sample order by id`);
+  return { db, scan, run1, run2, before };
+}
+
+describe("migration 0009: the sample belongs to a run", () => {
+  it("keeps every place of a reviewed sample as it was", () => {
+    const { db, before } = databaseBeforeSamplePerRun();
+    expect(
+      selectRows(db, z.object({ user_version: z.number() }), "pragma user_version")[0],
+    ).toEqual({ user_version: 8 });
+    migrate(db);
+    expect(before).toHaveLength(4);
+    expect(selectRows(db, sampleRow, `select ${SAMPLE_COLUMNS} from sample order by id`)).toEqual(
+      before,
+    );
+  });
+
+  it("takes the run of a place from its mention", () => {
+    const { db, run1, run2 } = databaseBeforeSamplePerRun();
+    migrate(db);
+    const rows = selectRows(
+      db,
+      z.object({ id: z.number(), run_id: z.number(), mention_run: z.number() }),
+      `select s.id, s.run_id, m.run_id as mention_run
+         from sample s join name_mention m on m.id = s.name_mention_id order by s.id`,
+    );
+    expect(rows.map((row) => row.run_id)).toEqual([run1, run1, run2, run2]);
+    expect(rows.every((row) => row.run_id === row.mention_run)).toBe(true);
+  });
+
+  it("allows the same rank in different runs and refuses it twice in one run", () => {
+    const { db, scan, run1, run2 } = databaseBeforeSamplePerRun();
+    migrate(db);
+    const insert = db.prepare(
+      "insert into sample (run_id, name_mention_id, rank) values (?, ?, ?)",
+    );
+    insert.run(run2, addMention(db, scan, run2, "Нове"), 1);
+    expect(() => {
+      insert.run(run1, addMention(db, scan, run1, "Ще нове"), 1);
+    }).toThrow(/UNIQUE constraint failed/);
+  });
+
+  it("refuses a place whose run is not the run of its mention", () => {
+    const { db, scan, run1, run2 } = databaseBeforeSamplePerRun();
+    migrate(db);
+    const mention = addMention(db, scan, run1, "Прізвище");
+    expect(() => {
+      db.prepare("insert into sample (run_id, name_mention_id, rank) values (?, ?, 9)").run(
+        run2,
+        mention,
+      );
+    }).toThrow(/FOREIGN KEY constraint failed/);
+  });
+
+  it("still never changes the first reading of a place", () => {
+    const { db } = databaseBeforeSamplePerRun();
+    migrate(db);
+    expect(() => {
+      db.prepare("update sample set read_text = 'Нове' where id = 2").run();
+    }).toThrow(/does not change/);
+    db.prepare("update sample set status = 'confirmed', read_text = 'Перше' where id = 1").run();
+    expect(
+      selectRows(
+        db,
+        sampleRow,
+        "select id, name_mention_id, rank, status, note, read_text from sample where id = 1",
+      )[0]?.read_text,
+    ).toBe("Перше");
+  });
+
+  it("leaves a consistent database", () => {
+    const { db } = databaseBeforeSamplePerRun();
+    migrate(db);
+    expect(selectRows(db, z.record(z.string(), z.unknown()), "pragma foreign_key_check")).toEqual(
+      [],
+    );
+    expect(
+      selectRows(db, z.object({ integrity_check: z.string() }), "pragma integrity_check"),
+    ).toEqual([{ integrity_check: "ok" }]);
   });
 });
 

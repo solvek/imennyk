@@ -10,7 +10,7 @@ import { readRunErrorRate, writeRunErrorRate, type RunErrorRate } from "./run.ts
 
 export type ReviewSet = "doubt" | "sample";
 
-/** Address of one item: `doubt.id` or `sample.rank`. */
+/** Address of one item: `doubt.id` or `sample.id`; both are unique in the whole database. */
 export interface ItemRef {
   readonly set: ReviewSet;
   readonly id: number;
@@ -44,6 +44,8 @@ export function listCases(root: string): string[] {
 export interface ReviewItem {
   readonly set: ReviewSet;
   readonly id: number;
+  /** Place in the sample of its run (1…), or null for a doubt. */
+  readonly rank: number | null;
   readonly scan: string;
   readonly url: string;
   /** File of the full scan in `raw/`. */
@@ -77,6 +79,7 @@ export interface ItemFilter {
 
 const itemRow = z.object({
   id: z.number(),
+  rank: z.number().nullable(),
   scan: z.string(),
   url: z.string(),
   width: z.number(),
@@ -97,7 +100,7 @@ const itemRow = z.object({
 });
 
 const DOUBT_SQL = `
-  select d.id, s.name as scan, s.url, s.width, s.height, b.x as box_x, b.y as box_y, b.w as box_w, b.h as box_h,
+  select d.id, null as rank, s.name as scan, s.url, s.width, s.height, b.x as box_x, b.y as box_y, b.w as box_w, b.h as box_h,
          d.person_id, d.run_id, d.element, d.read_text, d.variants, d.note as agent_note,
          d.status, d.resolution as note,
          case d.element when 'given' then p.given when 'patronymic' then p.patronymic
@@ -108,7 +111,7 @@ const DOUBT_SQL = `
     left join person p on p.id = d.person_id`;
 
 const SAMPLE_SQL = `
-  select sm.rank as id, s.name as scan, s.url, s.width, s.height, b.x as box_x, b.y as box_y, b.w as box_w, b.h as box_h,
+  select sm.id, sm.rank, s.name as scan, s.url, s.width, s.height, b.x as box_x, b.y as box_y, b.w as box_w, b.h as box_h,
          m.person_id, m.run_id, 'surname' as element, coalesce(sm.read_text, m.text) as read_text,
          null as variants, null as agent_note, sm.status, sm.note, m.text as current_value
     from sample sm
@@ -131,6 +134,7 @@ function toItem(set: ReviewSet, row: z.infer<typeof itemRow>): ReviewItem {
   return {
     set,
     id: row.id,
+    rank: row.rank,
     scan: row.scan,
     url: row.url,
     scanFile: `${row.scan}.jpg`,
@@ -152,13 +156,22 @@ function toItem(set: ReviewSet, row: z.infer<typeof itemRow>): ReviewItem {
   };
 }
 
-/** Items of a set, open ones first; `filter` narrows by element and by state. */
-export function listItems(db: DatabaseSync, set: ReviewSet, filter: ItemFilter = {}): ReviewItem[] {
-  const idColumn = set === "doubt" ? "d.id" : "sm.rank";
+/**
+ * Items of a set that belong to run `runId`, open ones first; `filter` narrows by element and by
+ * state. Doubts go in the order they were found, places of the sample in the order of their rank.
+ */
+export function listItems(
+  db: DatabaseSync,
+  set: ReviewSet,
+  runId: number,
+  filter: ItemFilter = {},
+): ReviewItem[] {
+  const orderColumn = set === "doubt" ? "d.id" : "sm.rank";
   const statusColumn = set === "doubt" ? "d.status" : "sm.status";
   const elementColumn = set === "doubt" ? "d.element" : "'surname'";
-  const params: string[] = [];
-  const where: string[] = [];
+  const runColumn = set === "doubt" ? "d.run_id" : "sm.run_id";
+  const params: (string | number)[] = [runId];
+  const where: string[] = [`${runColumn} = ?`];
   if (filter.element !== undefined) {
     where.push(`${elementColumn} = ?`);
     params.push(filter.element);
@@ -168,25 +181,49 @@ export function listItems(db: DatabaseSync, set: ReviewSet, filter: ItemFilter =
     params.push(filter.status);
   }
   const sql = `${itemSql(set)}
-    ${where.length > 0 ? `where ${where.join(" and ")}` : ""}
-    order by (${statusColumn} <> 'open'), ${idColumn}`;
+    where ${where.join(" and ")}
+    order by (${statusColumn} <> 'open'), ${orderColumn}`;
   return selectRows(db, itemRow, sql, params).map((row) => toItem(set, row));
 }
 
 function getItem(db: DatabaseSync, ref: ItemRef): { item: ReviewItem; runId: number } {
-  const idColumn = ref.set === "doubt" ? "d.id" : "sm.rank";
+  const idColumn = ref.set === "doubt" ? "d.id" : "sm.id";
   const row = selectRows(db, itemRow, `${itemSql(ref.set)} where ${idColumn} = ?`, [ref.id])[0];
   if (row === undefined) throw new Error(`no ${ref.set} ${String(ref.id)}`);
   return { item: toItem(ref.set, row), runId: row.run_id };
 }
 
-/** One item by its address, or undefined when there is none. */
-export function findItem(db: DatabaseSync, ref: ItemRef): ReviewItem | undefined {
+/** One item of run `runId` by its address, or undefined when there is none (or it is of another run). */
+export function findItem(db: DatabaseSync, ref: ItemRef, runId: number): ReviewItem | undefined {
   try {
-    return getItem(db, ref).item;
+    const found = getItem(db, ref);
+    return found.runId === runId ? found.item : undefined;
   } catch {
     return undefined;
   }
+}
+
+export interface RunSummary {
+  readonly id: number;
+  readonly model: string;
+  readonly note: string | null;
+  readonly startedAt: string;
+}
+
+const runSummaryRow = z.object({
+  id: z.number(),
+  model: z.string(),
+  note: z.string().nullable(),
+  started_at: z.string(),
+});
+
+/** Runs of the case, the oldest first. */
+export function listRuns(db: DatabaseSync): RunSummary[] {
+  return selectRows(
+    db,
+    runSummaryRow,
+    "select id, model, note, started_at from run order by id",
+  ).map((row) => ({ id: row.id, model: row.model, note: row.note, startedAt: row.started_at }));
 }
 
 export interface Progress {
@@ -198,14 +235,15 @@ export interface Progress {
 
 const progressRow = z.object({ element: z.string(), total: z.number(), reviewed: z.number() });
 
-export function progress(db: DatabaseSync, set: ReviewSet): Progress {
+/** How much of a set of run `runId` has been reviewed. */
+export function progress(db: DatabaseSync, set: ReviewSet, runId: number): Progress {
   const sql =
     set === "doubt"
       ? `select element, count(*) as total, coalesce(sum(status <> 'open'), 0) as reviewed
-           from doubt group by element order by element`
+           from doubt where run_id = ? group by element order by element`
       : `select 'surname' as element, count(*) as total, coalesce(sum(status <> 'open'), 0) as reviewed
-           from sample having count(*) > 0`;
-  const byElement = selectRows(db, progressRow, sql);
+           from sample where run_id = ? having count(*) > 0`;
+  const byElement = selectRows(db, progressRow, sql, [runId]);
   return {
     total: byElement.reduce((sum, row) => sum + row.total, 0),
     reviewed: byElement.reduce((sum, row) => sum + row.reviewed, 0),
@@ -235,9 +273,9 @@ function writeStatus(
   }
   db.prepare(
     `update sample set read_text = coalesce(read_text, (select text from name_mention where id = name_mention_id))
-      where rank = ?`,
+      where id = ?`,
   ).run(ref.id);
-  db.prepare("update sample set status = ?, note = ? where rank = ?").run(status, note, ref.id);
+  db.prepare("update sample set status = ?, note = ? where id = ?").run(status, note, ref.id);
 }
 
 /** Marks an item as correct, or as unreadable / unknown, leaving the values as they are. */
@@ -260,7 +298,7 @@ export function reopen(db: DatabaseSync, ref: ItemRef): void {
     if (ref.set === "doubt") {
       db.prepare("update doubt set status = 'open', resolution = null where id = ?").run(ref.id);
     } else {
-      db.prepare("update sample set status = 'open', note = null where rank = ?").run(ref.id);
+      db.prepare("update sample set status = 'open', note = null where id = ?").run(ref.id);
     }
   });
 }
@@ -296,19 +334,15 @@ export interface ErrorRate extends RunErrorRate {
   readonly runId: number;
 }
 
-/** Share of wrong places (fixed + unreadable) in the whole sample, to 0.1 %. */
-export function errorRate(db: DatabaseSync): ErrorRate {
+/** Share of wrong places (fixed + unreadable) in the sample of run `runId`, to 0.1 %. */
+export function errorRate(db: DatabaseSync, runId: number): ErrorRate {
   const rows = selectRows(
     db,
-    z.object({ run_id: z.number(), status: z.string() }),
-    `select m.run_id, sm.status from sample sm join name_mention m on m.id = sm.name_mention_id`,
+    z.object({ status: z.string() }),
+    "select status from sample where run_id = ?",
+    [runId],
   );
   if (rows.length === 0) throw new Error("the sample is not built yet");
-  const runs = new Set(rows.map((row) => row.run_id));
-  const [runId] = [...runs];
-  if (runs.size !== 1 || runId === undefined) {
-    throw new Error("the sample belongs to several runs; the rate is counted for one run");
-  }
   const errors = rows.filter((row) => reviewTone(row.status) === "error").length;
   return {
     runId,
@@ -319,28 +353,31 @@ export function errorRate(db: DatabaseSync): ErrorRate {
 }
 
 /**
- * Makes every open place of the sample «correct», counts the rate and writes it into the
- * metafile of the run in `dir`. The states are saved before the file is written, so a failed
- * write is repeated by pressing the button again.
+ * Makes every open place of the sample of run `runId` «correct», counts the rate and writes it
+ * into the metafile of the run in `dir`. The states are saved before the file is written, so a
+ * failed write is repeated by pressing the button again. Other runs are not touched.
  */
-export function recordErrorRate(db: DatabaseSync, dir: string): ErrorRate {
+export function recordErrorRate(db: DatabaseSync, dir: string, runId: number): ErrorRate {
   const rate = inTransaction(db, () => {
-    for (const item of listItems(db, "sample", { status: "open" })) {
+    for (const item of listItems(db, "sample", runId, { status: "open" })) {
       writeStatus(db, { set: "sample", id: item.id }, "confirmed", null);
     }
-    return errorRate(db);
+    return errorRate(db, runId);
   });
   writeRunErrorRate(db, rate.runId, dir, rate);
   return rate;
 }
 
-/** The rate last written into the metafile of the run of the sample, if any. */
-export function recordedErrorRate(db: DatabaseSync, dir: string): RunErrorRate | null {
-  let rate: ErrorRate;
+/** The rate last written into the metafile of run `runId`, if its sample is built and there is one. */
+export function recordedErrorRate(
+  db: DatabaseSync,
+  dir: string,
+  runId: number,
+): RunErrorRate | null {
   try {
-    rate = errorRate(db);
+    errorRate(db, runId);
   } catch {
     return null;
   }
-  return readRunErrorRate(db, rate.runId, dir);
+  return readRunErrorRate(db, runId, dir);
 }
