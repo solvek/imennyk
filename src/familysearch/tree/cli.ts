@@ -2,6 +2,7 @@
 //   fetch  --root ID [--root ID …] [--allow ID …]   ancestors of the roots → raw/tree-<ID>.json
 //   ingest --model M                                 every raw/tree-*.json not yet read → case.sqlite
 //   enter  --actor A [--places file] (--dry-run | --apply)   the case → the well
+//   places --actor A --places file (--dry-run | --apply)     make the places asked for, put places into entered events
 // Thin: parses arguments, reads and writes files, prints. The logic is in the modules beside.
 import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -20,11 +21,13 @@ import { crawlTrees } from "./crawl.ts";
 import { ingestTree } from "./ingest.ts";
 import { enterTree, planTreeEntry } from "./enter.ts";
 import { treeBundleSchema } from "./model.ts";
+import { applyPlaces, placeDecisionsSchema } from "./places.ts";
 
 const USAGE = `usage: pnpm familysearch:tree <fetch|ingest|enter> <case dir> [options]
   fetch  --root ID [--root ID …] [--allow ID …]
   ingest --model M
-  enter  --actor A [--places file] (--dry-run | --apply)`;
+  enter  --actor A [--places file] (--dry-run | --apply)
+  places --actor A --places file (--dry-run | --apply)`;
 
 const { positionals, values } = parseArgs({
   allowPositionals: true,
@@ -98,11 +101,16 @@ switch (command) {
     const db = new DatabaseSync(original, { readOnly: true });
     const plan = planTreeEntry(db);
     db.close();
-    const placeMap = z
-      .record(z.string(), z.int())
-      .parse(
-        values.places === undefined ? {} : JSON.parse(readFileSync(values.places, "utf8")),
-      );
+    const placeMap: Record<string, number> = {};
+    const decisions = placeDecisionsSchema.parse(
+      values.places === undefined ? {} : JSON.parse(readFileSync(values.places, "utf8")),
+    );
+    for (const [fsId, decision] of Object.entries(decisions)) {
+      if (typeof decision !== "number") {
+        throw new Error(`place ${fsId} is still to be created: run \`places\` first`);
+      }
+      placeMap[fsId] = decision;
+    }
     console.log(
       `plan: ${String(plan.persons.length)} persons, ${String(plan.events.length)} events, ${String(plan.ties.length)} ties, ${String(plan.places.length)} places`,
     );
@@ -128,6 +136,35 @@ switch (command) {
         console.log(`ddb_map: ${String(saveMapping(original, result.mapping))} rows`);
       }
     } finally {
+      await client.end();
+    }
+    break;
+  }
+  case "places": {
+    if (values.actor === undefined || values.places === undefined || values.apply === values["dry-run"]) {
+      console.error(USAGE);
+      process.exit(2);
+    }
+    const decisions = placeDecisionsSchema.parse(JSON.parse(readFileSync(values.places, "utf8")));
+    const db = new DatabaseSync(join(caseDir, "case.sqlite"), { readOnly: true });
+    const client = new pg.Client({ connectionString: databaseUrl() });
+    await client.connect();
+    try {
+      const result = await applyPlaces(client, db, decisions, {
+        actor: values.actor,
+        dryRun: values["dry-run"],
+      });
+      console.log(
+        `${values.apply ? "done" : "dry run, rolled back"}: ${String(Object.keys(result.created).length)} places created, ${String(result.events)} events got a place`,
+      );
+      console.log(`created: ${JSON.stringify(result.created)}`);
+      if (values.apply) {
+        // A created place is an id from now on, so a second run finds it by the id.
+        const resolved = { ...decisions, ...result.created };
+        writeFileSync(values.places, `${JSON.stringify(resolved, null, 2)}\n`);
+      }
+    } finally {
+      db.close();
       await client.end();
     }
     break;
