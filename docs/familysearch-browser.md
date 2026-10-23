@@ -47,6 +47,9 @@ node import/familysearch-dgs/scan.mjs '<посилання на зображен
 
 Далі скан читають збільшеними фрагментами за [scan-extraction.md](scan-extraction.md), крок 3. Для огляду спершу зменшена копія (`magick n048.jpg -resize 22% n048_s.jpg`, ~1360 px завширшки), потім смуги з потрібних місць.
 
+## Дерева (Family Tree)
+Той самий залогінений Chrome віддає й родоводи: вкладка на `familysearch.org` викликає `fetch('/service/tree/…')` і повертає JSON; куки й токени не виходять з браузера (`/platform/…` без токена дає 401, ним не користуємось). Адреси, обхід поколінь і правило про живих — [familysearch-tree.md](familysearch-tree.md), код — `src/genealogy/import/familysearch-tree/browser.ts`.
+
 ## Коли щось не працює
 | Ознака | Причина й що робити |
 |---|---|
