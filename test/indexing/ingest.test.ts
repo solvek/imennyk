@@ -406,7 +406,6 @@ describe("source of the household", () => {
           type: "confession",
           period_from: null,
           period_to: null,
-          period_qual: null,
           title: "Сповідні відомості",
           callno: "1/74/406",
           url: null,

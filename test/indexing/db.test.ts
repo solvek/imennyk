@@ -425,7 +425,6 @@ describe("pulled repository and sources", () => {
         type: "confession",
         period_from: "1912-01-01",
         period_to: "1912-12-31",
-        period_qual: "exact",
         title: "Сповідні відомості",
         callno: "1/74/406",
         url: "https://example.org/s",
@@ -446,13 +445,14 @@ describe("pulled repository and sources", () => {
     ).toEqual([{ id: 420602, title: "Нова назва" }]);
   });
 
-  it("rejects a source whose date quality is not a ddb one", () => {
+  it("keeps no date quality of a source: the period is exact", () => {
     const db = openCaseDb(":memory:");
-    expect(() =>
-      savePulled(db, {
-        ...pulled,
-        sources: [{ ...(pulled.sources[0] ?? {}), period_qual: "maybe" }],
-      }),
-    ).toThrow();
+    expect(
+      selectRows(
+        db,
+        z.object({ name: z.string() }),
+        "select name from pragma_table_info('source') where name = 'period_qual'",
+      ),
+    ).toEqual([]);
   });
 });
