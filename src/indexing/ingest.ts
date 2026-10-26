@@ -100,7 +100,13 @@ function writeReading(db: DatabaseSync, runId: number, reading: Reading): Ingest
       reading.source,
     ]).length === 0
   ) {
-    throw new Error(`unknown source ${String(reading.source)}: pull it from the well first`);
+    throw new Error(`unknown source ${String(reading.source)}: add it to the bank first`);
+  }
+  if (reading.source !== undefined) {
+    db.prepare("update scan set source_id = ? where id = ? and source_id is null").run(
+      reading.source,
+      scanId,
+    );
   }
 
   const boxId = (box: Box | undefined): number | null =>

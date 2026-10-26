@@ -392,10 +392,10 @@ describe("attributes", () => {
 });
 
 describe("source of the household", () => {
-  it("links the event to a source pulled from the well and rejects an unknown one", () => {
+  it("links the event and the scan to a source of the bank and rejects an unknown one", () => {
     const { db, run } = setup();
     expect(() => ingestReading(db, run, { ...reading, source: 420602 })).toThrow(
-      /pull it from the well/,
+      /add it to the bank first/,
     );
     savePulled(db, {
       repositories: [{ id: 67, type: "archive", name: "Державний архів", abbr: "ДАЖО", url: null }],
@@ -421,6 +421,14 @@ describe("source of the household", () => {
         "select count(*) as n from event where source_id = 420602",
       )[0]?.n,
     ).toBe(1);
+    expect(
+      selectRows(
+        db,
+        z.object({ source_id: z.number().nullable() }),
+        "select source_id from scan where name = ?",
+        [reading.scan],
+      )[0]?.source_id,
+    ).toBe(420602);
   });
 });
 
