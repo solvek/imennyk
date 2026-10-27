@@ -1,0 +1,8 @@
+node_modules/
+.pnpm-store/
+dist/
+coverage/
+.env
+
+# Banks and scans of real cases hold names of people: they are kept outside this repository.
+*.sqlite

@@ -1,0 +1,27 @@
+schema: spec-driven
+
+context: |
+  Read AGENTS.md first: its rules are mandatory. Docs live in docs/ (Ukrainian).
+  The owner does not review code; types, linters and tests are the reviewer.
+  Language: Ukrainian.
+  All artifacts must be written in Ukrainian (proposal, design, tasks, specs),
+  and so are chat replies and questions to the owner.
+  Code, identifiers, code comments and commit messages stay in English.
+  Work on `main` in the local checkout: no branches, worktrees or PRs unless asked.
+  Imennyk produces banks (local SQLite); it never writes to Grapa's database and
+  does not import Grapa's code. Bank schema changes are numbered SQL migrations.
+  No living person is written into a bank from a family tree. Tests, examples
+  and demos use fictional data; banks and scans of real cases are never committed.
+
+rules:
+  proposal:
+    - State what is out of scope.
+    - List every decision that is not in the docs as an open question for the owner instead of choosing silently.
+  tasks:
+    - Include a task for each affected doc (docs/overview.md and the docs of the touched tool).
+    - The last task is running `pnpm typecheck`, `pnpm lint` and `pnpm test`.
+
+operations:
+  apply:
+    guidance:
+      - Commit in small steps on main; run the three checks before every commit.

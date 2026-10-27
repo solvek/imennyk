@@ -1,0 +1,8 @@
+pnpm-lock.yaml
+*.md
+openspec/
+.claude/
+.cursor/
+node_modules/
+dist/
+coverage/
