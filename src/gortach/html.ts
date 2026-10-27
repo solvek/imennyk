@@ -78,6 +78,8 @@ ${head}<style>
   .sheet { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 20px 16px 8px; }
   .place-map { position: relative; margin: 12px 0 16px; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: var(--soft); }
   .place-map-canvas { height: 14rem; width: 100%; }
+  .place-map-note { margin: 0; padding: 6px 12px; font-size: 13px; color: var(--muted, #666); background: var(--card); }
+  .place-map:fullscreen .place-map-note, .place-map-css-fs .place-map-note { display: none; }
   .place-map .leaflet-bar a.place-map-fs { display: flex; align-items: center; justify-content: center; width: 30px; height: 30px; color: var(--grape); }
   .place-map:fullscreen { width: 100%; height: 100%; margin: 0; border: 0; border-radius: 0; }
   .place-map:fullscreen .place-map-canvas { height: 100%; }
