@@ -56,6 +56,7 @@ export const PLACE_TYPES = [
   "volost",
   "parish",
   "settlement",
+  "colony",
   "hamlet",
   "church",
   "cemetery",
