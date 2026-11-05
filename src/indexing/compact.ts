@@ -5,7 +5,7 @@
 // Lines (blank lines and «#» comments are ignored):
 //   scan 435                      the scan name (required, first)
 //   year 1912
-//   place Владимиръ settlement    the place of the households that follow (name and optional type)
+//   place Владимиръ settlement    the place of the households that follow (name and optional type); a later `place` line starts another place
 //   cols L 1068 1955              x range (scan px) of the name column of page L; R likewise
 //   page L                        the page the following rows are on
 //   section Духовные              status attribute of the households that begin from here on
@@ -84,8 +84,8 @@ export function compactToReading(
 ): { reading: Reading; summary: CompactSummary } {
   let scan: string | undefined;
   let year: number | undefined;
-  let placeName: string | undefined;
-  let placeType: string | undefined;
+  const places: { key: string; name: string; type?: string }[] = [];
+  let currentPlace: string | undefined;
   const cols = new Map<string, readonly [number, number]>();
   let page: string | undefined;
   let section: string | undefined;
@@ -188,6 +188,7 @@ export function compactToReading(
           members: [member],
           ties: [],
           box,
+          ...(currentPlace === undefined ? {} : { place: currentPlace }),
         };
         if (section !== undefined) household.attributes.push({ type: "status", value: section });
         households.push(household);
@@ -255,14 +256,12 @@ export function compactToReading(
         year = Number(rest);
         return;
       case "place": {
+        // A new `place` line starts a new place; households that begin after it belong to it.
         const [name, type] = [rest.split(/\s+/).slice(0, -1).join(" "), rest.split(/\s+/).at(-1)];
-        if (type !== undefined && /^[a-z]+$/.test(type) && name !== "") {
-          placeName = name;
-          placeType = type;
-        } else {
-          placeName = rest;
-          placeType = undefined;
-        }
+        const typed = type !== undefined && /^[a-z]+$/.test(type) && name !== "";
+        const key = `v${String(places.length + 1)}`;
+        places.push({ key, name: typed ? name : rest, ...(typed ? { type } : {}) });
+        currentPlace = key;
         return;
       }
       case "cols": {
@@ -317,14 +316,8 @@ export function compactToReading(
   const reading: Record<string, unknown> = {
     scan,
     year,
-    places:
-      placeName === undefined
-        ? []
-        : [{ key: "v1", name: placeName, ...(placeType === undefined ? {} : { type: placeType }) }],
-    households: households.map((household) => ({
-      ...household,
-      ...(placeName === undefined ? {} : { place: "v1" }),
-    })),
+    places,
+    households,
     doubts,
     scan_attributes: scanNotes.map((value) => ({ type: "note", value })),
   };

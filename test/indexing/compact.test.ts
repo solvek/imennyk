@@ -66,3 +66,14 @@ describe("compactToReading", () => {
     ).toThrow(/cont/);
   });
 });
+
+describe("compactToReading places", () => {
+  it("gives each household the place that was current when it began", () => {
+    const { reading } = compactToReading(
+      "scan s\nyear 1912\nplace Перше settlement\ncols L 1 9\npage L\n10;H;m;А;Б;В;1\nplace Друге settlement\n20;H;m;Г;Д;Е;2",
+      { start: { m: 0, f: 0 } },
+    );
+    expect(reading.places.map((p) => p.name)).toEqual(["Перше", "Друге"]);
+    expect(reading.households.map((h) => h.place)).toEqual(["v1", "v2"]);
+  });
+});
