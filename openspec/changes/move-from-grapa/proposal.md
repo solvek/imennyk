@@ -7,7 +7,7 @@
 ## What Changes
 
 - Код переноситься з Grapa **з історією комітів** (`git filter-repo`), у нову розкладку Іменника:
-  - ядро індексації (`src/genealogy/indexing/` без `pull*` і `enter/`) → `src/indexing/`: банка й міграції, схема читання, `ingest`, `hints`, `sample`, `review`, `run`, `dump`, `scans`, двори, сирі скани; CLI `pnpm indexing`;
+  - ядро індексації (`src/genealogy/indexing/` без `pull-cli.ts` і `enter/`) → `src/indexing/`: банка й міграції, схема читання, `ingest`, `hints`, `sample`, `review`, `run`, `dump`, `scans`, двори, сирі скани; CLI `pnpm indexing`;
   - Гортач (`src/web/gortach/` і потрібний йому `src/web/html.ts`) → `src/gortach/`; CLI `pnpm gortach`;
   - читання дерев FamilySearch у банку (`api`, `browser`, `crawl`, `parse`, `model`, `ingest` з `src/genealogy/import/familysearch-tree/`) і правило живих (`src/genealogy/import/living.ts`) → `src/familysearch/tree/`, `src/living.ts`; CLI `pnpm familysearch:tree` лише з командами `fetch` і `ingest`;
   - перелік типів атрибутів (`src/genealogy/attribute-types.ts`) → `src/indexing/attribute-types.ts`;
@@ -20,7 +20,7 @@
 
 Поза межами зміни:
 - Будь-які зміни поведінки: версія схеми банки, публічний API для заливки, плугін, MCP, `sharp`, сегментатор, каталог бланків, CSV, веб — наступні етапи.
-- Заливка банки в базу (`enter`), копіювання сховища й джерела з бази (`pull`), зіставлення місць дерев з базою (`places`) — лишаються в Grapa.
+- Заливка банки в базу (`enter`), читання сховища й джерела з PostgreSQL (`pull-cli`), зіставлення місць дерев з базою (`places`) — лишаються в Grapa.
 - Зміни в самій Grapa: її копія коду не видаляється в цій зміні; перехід Grapa на пакет Іменника — окрема зміна в Grapa (етап 2).
 - Переписування `scan.mjs` на TypeScript (етап 3).
 - Імпорт РАГЗ і record-sheet.

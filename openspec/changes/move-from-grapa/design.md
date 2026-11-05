@@ -30,7 +30,7 @@
 ### Розкладка
 | Grapa | Іменник |
 |---|---|
-| `src/genealogy/indexing/` (без `pull.ts`, `pull-cli.ts`, `enter/`) | `src/indexing/` |
+| `src/genealogy/indexing/` (без `pull-cli.ts`, `enter/`) | `src/indexing/` |
 | `src/genealogy/attribute-types.ts` | `src/indexing/attribute-types.ts` |
 | `src/web/gortach/`, `src/web/html.ts` | `src/gortach/`, `src/gortach/html.ts` |
 | `src/genealogy/import/familysearch-tree/` (без `enter.ts`, `places.ts`) | `src/familysearch/tree/` |
@@ -53,6 +53,15 @@
 
 ### Копія в Grapa заморожується
 До етапу 2 у Grapa лишається своя копія коду, бо нею користується заливка. Правки індексації після переїзду робляться лише в Іменнику (відкрите питання 2 у proposal).
+
+### Що з'ясувалося під час переїзду
+- `pull.ts` не звертається до PostgreSQL: `savePulled` лише пише в банку сховища й джерела, які дає база заливки. Він переходить в Іменник (без історії — один файл, скопійований окремо), а `pull-cli.ts`, що читає їх з PostgreSQL, лишається в Grapa.
+- Тест «переліки збігаються з `pg_enum`» лишається в Grapa; в Іменнику той самий тест CHECK-списків SQLite звіряє їх із власними переліками банки.
+- `html.ts` втрачає залежності від локалей сайту Grapa (`core/locale.ts`, `ru-ui-locale.ts`); стиль сторінки той самий.
+- Гортач без `--root` бере поточну теку (у Grapa — `import/indexing`, якого в Іменнику немає).
+- `procedure_sha` прогону береться з git репозиторію Іменника, хоч би з якої теки запускали інструмент.
+- `tools/` поза ESLint і Prettier до етапу 3.
+- Модель криниці змінилася до переїзду (газетир місць, тип місця `colony`, атрибут `ext_id`): банка вже має це в міграції `0013_colony_ext_id.sql`, яка прийшла з історією.
 
 ## Risks / Trade-offs
 
