@@ -1,12 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { openCaseDb, selectRows } from "../../../src/genealogy/indexing/db.ts";
-import { startRun } from "../../../src/genealogy/indexing/run.ts";
-import { chooseNames, ingestTree } from "../../../src/genealogy/import/familysearch-tree/ingest.ts";
-import type {
-  TreeBundle,
-  TreePerson,
-} from "../../../src/genealogy/import/familysearch-tree/model.ts";
+import { openCaseDb, selectRows } from "../../../src/indexing/db.ts";
+import { startRun } from "../../../src/indexing/run.ts";
+import { chooseNames, ingestTree } from "../../../src/familysearch/tree/ingest.ts";
+import type { TreeBundle, TreePerson } from "../../../src/familysearch/tree/model.ts";
 
 const place = (name: string, id: number | null = 100) => ({
   id,

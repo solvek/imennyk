@@ -3,9 +3,9 @@ import { existsSync, readFileSync } from "node:fs";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { join } from "node:path";
 import type { DatabaseSync } from "node:sqlite";
-import { openCaseDb } from "../../genealogy/indexing/db.ts";
-import { REVIEW_STATUSES } from "../../genealogy/indexing/enums.ts";
-import { rawFiles, wipeRaw } from "../../genealogy/indexing/raw.ts";
+import { openCaseDb } from "../indexing/db.ts";
+import { REVIEW_STATUSES } from "../indexing/enums.ts";
+import { rawFiles, wipeRaw } from "../indexing/raw.ts";
 import {
   findItem,
   fixName,
@@ -20,7 +20,7 @@ import {
   type ItemFilter,
   type ReviewSet,
   type RunSummary,
-} from "../../genealogy/indexing/review.ts";
+} from "../indexing/review.ts";
 import { caseHref, casePage, casesPage, errorPage, noDatabasePage } from "./pages.ts";
 
 export interface GortachOptions {

@@ -13,7 +13,10 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint . && prettier --check .",
     "format": "prettier --write .",
-    "test": "vitest run --passWithNoTests"
+    "test": "vitest run --passWithNoTests",
+    "indexing": "tsx src/indexing/cli.ts",
+    "gortach": "tsx src/gortach/cli.ts",
+    "familysearch:tree": "tsx src/familysearch/tree/cli.ts"
   },
   "dependencies": {
     "yaml": "^2.9.1",

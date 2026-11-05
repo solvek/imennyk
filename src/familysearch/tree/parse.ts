@@ -1,5 +1,5 @@
 // FamilySearch replies → sanitized records. Pure functions, no network.
-import { livingState, type LivingState } from "../living.ts";
+import { livingState, type LivingState } from "../../living.ts";
 import type { Details, Fact, Summary } from "./api.ts";
 import type { TreeDate, TreeEvent, TreePerson, TreePlace } from "./model.ts";
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { crawlTrees } from "../../../src/genealogy/import/familysearch-tree/crawl.ts";
+import { crawlTrees } from "../../../src/familysearch/tree/crawl.ts";
 import { fakeFetcher, type FakePerson, type Pedigree } from "./fixtures.ts";
 
 const options = { referenceYear: 2026, fetchedAt: "2026-10-23T00:00:00Z" };

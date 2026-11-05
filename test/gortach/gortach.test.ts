@@ -11,10 +11,10 @@ import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { z } from "zod";
 import { parse } from "yaml";
-import { openCaseDb } from "../../src/genealogy/indexing/db.ts";
-import { ingestReading } from "../../src/genealogy/indexing/ingest.ts";
-import { startRun } from "../../src/genealogy/indexing/run.ts";
-import { startGortach, type Gortach } from "../../src/web/gortach/server.ts";
+import { openCaseDb } from "../../src/indexing/db.ts";
+import { ingestReading } from "../../src/indexing/ingest.ts";
+import { startRun } from "../../src/indexing/run.ts";
+import { startGortach, type Gortach } from "../../src/gortach/server.ts";
 
 const box = (y: number) => ({ x: 10, y, w: 100, h: 15 });
 const CASE = "case-a";

@@ -1,10 +1,10 @@
 import type { DatabaseSync } from "node:sqlite";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { openCaseDb, selectRows } from "../../../src/genealogy/indexing/db.ts";
-import { birthRange, ingestReading } from "../../../src/genealogy/indexing/ingest.ts";
-import { savePulled } from "../../../src/genealogy/indexing/pull.ts";
-import { startRun } from "../../../src/genealogy/indexing/run.ts";
+import { openCaseDb, selectRows } from "../../src/indexing/db.ts";
+import { birthRange, ingestReading } from "../../src/indexing/ingest.ts";
+import { savePulled } from "../../src/indexing/pull.ts";
+import { startRun } from "../../src/indexing/run.ts";
 
 function setup(): { db: DatabaseSync; run: number } {
   const db = openCaseDb(":memory:");

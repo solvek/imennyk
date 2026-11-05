@@ -1,6 +1,6 @@
 // HTML of Gortach: the list of cases and the two tabs of a case. Pure functions of their input.
-import { esc, page } from "../html.ts";
-import { REVIEW_STATUSES } from "../../genealogy/indexing/enums.ts";
+import { esc, page } from "./html.ts";
+import { REVIEW_STATUSES } from "../indexing/enums.ts";
 import {
   reviewTone,
   type ItemFilter,
@@ -9,7 +9,7 @@ import {
   type ReviewSet,
   type ReviewStatus,
   type RunSummary,
-} from "../../genealogy/indexing/review.ts";
+} from "../indexing/review.ts";
 
 const STYLE = `<style>
   :root { --danger-tint: #f8e6e3; }

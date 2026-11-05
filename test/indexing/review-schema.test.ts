@@ -3,9 +3,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { describe, expect, it } from "vitest";
-import { migrate, openCaseDb } from "../../../src/genealogy/indexing/db.ts";
-import { DOUBT_ELEMENTS, REVIEW_STATUSES } from "../../../src/genealogy/indexing/enums.ts";
-import { namePart } from "../../../src/genealogy/indexing/reading.ts";
+import { migrate, openCaseDb } from "../../src/indexing/db.ts";
+import { DOUBT_ELEMENTS, REVIEW_STATUSES } from "../../src/indexing/enums.ts";
+import { namePart } from "../../src/indexing/reading.ts";
 
 function seeded(): DatabaseSync {
   const db = openCaseDb(":memory:");
@@ -115,7 +115,7 @@ describe("review columns", () => {
 });
 
 describe("migration to doubts about words", () => {
-  const MIGRATIONS = join(import.meta.dirname, "../../../src/genealogy/indexing/migrations");
+  const MIGRATIONS = join(import.meta.dirname, "../../src/indexing/migrations");
 
   it("drops doubts about anything but a word and keeps the rest with their review", () => {
     const dir = mkdtempSync(join(tmpdir(), "indexing-0008-"));

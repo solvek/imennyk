@@ -1,5 +1,5 @@
 // A TreeFetcher that asks FamilySearch from inside the logged-in Chrome of the host
-// (docs/genealogy/indexing/familysearch-browser.md). The session never leaves the browser: no
+// (docs/familysearch-browser.md). The session never leaves the browser: no
 // cookie or token is read; a tab on familysearch.org calls the same `/service/…` addresses the
 // site itself calls, and only the JSON replies come back.
 import { z } from "zod";
@@ -83,9 +83,12 @@ export async function withFamilySearch<T>(
       );
     if (reply.status === 404) return null;
     if (reply.status === 401 || reply.status === 403) {
-      throw new Error(`FamilySearch answered ${String(reply.status)}: the session is gone, log in again (noVNC)`);
+      throw new Error(
+        `FamilySearch answered ${String(reply.status)}: the session is gone, log in again (noVNC)`,
+      );
     }
-    if (reply.status !== 200) throw new Error(`FamilySearch answered ${String(reply.status)} for ${path}`);
+    if (reply.status !== 200)
+      throw new Error(`FamilySearch answered ${String(reply.status)} for ${path}`);
     return reply.body;
   };
 
@@ -107,7 +110,9 @@ export async function withFamilySearch<T>(
     if (!ready) throw new Error("FamilySearch did not open: no session or a security check");
     return await use({
       pedigree: (root) =>
-        call(`${SERVICE}/tree-data/r9/portrait-pedigree/${root}?includeMarriages=true&numGenerations=8`),
+        call(
+          `${SERVICE}/tree-data/r9/portrait-pedigree/${root}?includeMarriages=true&numGenerations=8`,
+        ),
       details: (id) => call(`${SERVICE}/tree-data/v8/person/${id}/details`),
       sourceRefs: (id) => call(`${SERVICE}/tf/person/${id}/entityref?version=2`),
       sourceLinks: (ids) => call(`${SERVICE}/links/sources/${ids.join(",")}?readExternalData=true`),

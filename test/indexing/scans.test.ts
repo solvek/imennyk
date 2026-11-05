@@ -2,9 +2,9 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { dumpCaseDb } from "../../../src/genealogy/indexing/dump.ts";
-import { openCaseDb } from "../../../src/genealogy/indexing/db.ts";
-import { addScans } from "../../../src/genealogy/indexing/scans.ts";
+import { dumpCaseDb } from "../../src/indexing/dump.ts";
+import { openCaseDb } from "../../src/indexing/db.ts";
+import { addScans } from "../../src/indexing/scans.ts";
 
 describe("addScans", () => {
   const scan = { name: "n_603", url: "https://example.org/603", width: 6200, height: 5000 };

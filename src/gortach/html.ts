@@ -1,5 +1,7 @@
-import type { Locale } from "../core/locale.ts";
-import { RU_UI_LOCALE_SCRIPT } from "./ru-ui-locale.ts";
+// The page frame and style of the Grapa site, which Gortach follows.
+
+/** Language of a page. */
+export type Locale = "uk" | "en";
 
 /** Escape text for an HTML text node or a double-quoted attribute. */
 export function esc(value: string): string {
@@ -189,7 +191,6 @@ ${head}<style>
 </style>
 </head>
 <body>
-<script>${RU_UI_LOCALE_SCRIPT}</script>
 ${body}
 </body>
 </html>

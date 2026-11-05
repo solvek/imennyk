@@ -1,6 +1,6 @@
 // The JSON an agent writes for one scan. It is the only way data get into the case database.
 import { z } from "zod";
-import { attributeTypeByCode } from "../attribute-types.ts";
+import { attributeTypeByCode } from "./attribute-types.ts";
 import { BOX_ORIGINS, DOUBT_ELEMENTS, GENDERS, PLACE_TYPES, TIE_TYPES } from "./enums.ts";
 
 const key = z.string().min(1);

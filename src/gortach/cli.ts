@@ -1,4 +1,4 @@
-// Usage: pnpm gortach [--root import/indexing] [--port 8090] [--ssh user@host]
+// Usage: pnpm gortach [--root <folder of cases>] [--port 8090] [--ssh user@host]
 import { hostname, userInfo } from "node:os";
 import { parseArgs } from "node:util";
 import { startGortach } from "./server.ts";
@@ -6,7 +6,7 @@ import { startupMessage } from "./startup.ts";
 
 const { values } = parseArgs({
   options: {
-    root: { type: "string", default: "import/indexing" },
+    root: { type: "string", default: "." },
     port: { type: "string", default: "8090" },
     ssh: { type: "string" },
   },

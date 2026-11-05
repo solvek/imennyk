@@ -171,7 +171,8 @@ export function ingestTree(db: DatabaseSync, runId: number, bundle: TreeBundle):
         ],
       );
       counts.events += 1;
-      if (event.dateText !== null) attribute(scan, "note", "event_id", id, `Date as written: ${event.dateText}`);
+      if (event.dateText !== null)
+        attribute(scan, "note", "event_id", id, `Date as written: ${event.dateText}`);
       return id;
     };
 
@@ -224,9 +225,17 @@ export function ingestTree(db: DatabaseSync, runId: number, bundle: TreeBundle):
       for (const source of person.sources) {
         const title = source.date === null ? source.title : `${source.title}, ${source.date}`;
         if (source.url === null) attribute(scan, "note", "person_id", id, title);
-        else attribute(scan, "url", "person_id", id, `[${title.replaceAll(/[[\]]/g, "")}](${source.url})`);
+        else
+          attribute(
+            scan,
+            "url",
+            "person_id",
+            id,
+            `[${title.replaceAll(/[[\]]/g, "")}](${source.url})`,
+          );
       }
-      if (person.birth !== null) birthEvents.set(person.id, writeEvent("birth", id, scan, person.birth));
+      if (person.birth !== null)
+        birthEvents.set(person.id, writeEvent("birth", id, scan, person.birth));
       if (person.death !== null) writeEvent("death", id, scan, person.death);
     }
 
@@ -251,13 +260,16 @@ export function ingestTree(db: DatabaseSync, runId: number, bundle: TreeBundle):
       if (me === undefined) continue;
       for (const parentId of person.parents) {
         const parent = local.get(parentId);
-        if (parent !== undefined) tie(me.scan, me.person, parent.person, "child", birthEvents.get(person.id) ?? null);
+        if (parent !== undefined)
+          tie(me.scan, me.person, parent.person, "child", birthEvents.get(person.id) ?? null);
       }
       for (const spouse of person.spouses) {
         const other = local.get(spouse.id);
         if (other === undefined || hasTie(me.person, other.person, "spouse")) continue;
         const marriage =
-          spouse.marriage === null ? null : writeEvent("marriage", me.person, me.scan, spouse.marriage);
+          spouse.marriage === null
+            ? null
+            : writeEvent("marriage", me.person, me.scan, spouse.marriage);
         tie(me.scan, me.person, other.person, "spouse", marriage);
       }
     }

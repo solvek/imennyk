@@ -1,13 +1,5 @@
-import type {
-  DdbDateQual,
-  DdbEventType,
-  DdbGender,
-  DdbPlaceType,
-  DdbTieType,
-} from "../../generated/db.ts";
-
-// Same values as the ddb enums; a test compares them with `pg_enum`, and the CHECK lists in
-// `migrations/0001_init.sql` accept exactly these.
+// The vocabulary of the bank. The values are those of the enums of the Grapa database, which loads
+// banks; the CHECK lists in `migrations/` accept exactly these.
 
 export const EVENT_TYPES = [
   "birth",
@@ -25,7 +17,7 @@ export const EVENT_TYPES = [
   "emigration",
   "education",
   "property",
-] as const satisfies readonly DdbEventType[];
+] as const;
 
 export const TIE_TYPES = [
   "child",
@@ -38,16 +30,11 @@ export const TIE_TYPES = [
   "mentioned",
   "kin",
   "relative",
-] as const satisfies readonly DdbTieType[];
+] as const;
 
-export const DATE_QUALS = [
-  "exact",
-  "calculated",
-  "estimated",
-  "about",
-] as const satisfies readonly DdbDateQual[];
+export const DATE_QUALS = ["exact", "calculated", "estimated", "about"] as const;
 
-export const GENDERS = ["male", "female"] as const satisfies readonly DdbGender[];
+export const GENDERS = ["male", "female"] as const;
 
 export const PLACE_TYPES = [
   "country",
@@ -62,7 +49,7 @@ export const PLACE_TYPES = [
   "cemetery",
   "street",
   "building",
-] as const satisfies readonly DdbPlaceType[];
+] as const;
 
 export const BOX_ORIGINS = ["crop", "htr_line", "manual"] as const;
 /** A doubt is only about a word that was read: a name part or the name of a place. */

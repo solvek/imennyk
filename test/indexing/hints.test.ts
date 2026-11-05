@@ -1,9 +1,9 @@
 import type { DatabaseSync } from "node:sqlite";
 import { describe, expect, it } from "vitest";
-import { openCaseDb } from "../../../src/genealogy/indexing/db.ts";
-import { caseHints, formatHints, parseNameKind } from "../../../src/genealogy/indexing/hints.ts";
-import { ingestReading } from "../../../src/genealogy/indexing/ingest.ts";
-import { startRun } from "../../../src/genealogy/indexing/run.ts";
+import { openCaseDb } from "../../src/indexing/db.ts";
+import { caseHints, formatHints, parseNameKind } from "../../src/indexing/hints.ts";
+import { ingestReading } from "../../src/indexing/ingest.ts";
+import { startRun } from "../../src/indexing/run.ts";
 
 const box = { x: 10, y: 10, w: 100, h: 15 };
 

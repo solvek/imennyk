@@ -1,6 +1,6 @@
 // The rule for every tree import: a living person is never entered.
 import { describe, expect, it } from "vitest";
-import { livingState, mayEnter } from "../../src/genealogy/import/living.ts";
+import { livingState, mayEnter } from "../src/living.ts";
 
 const YEAR = 2026;
 

@@ -30,8 +30,9 @@ function procedureSha(): string | undefined {
   try {
     return execFileSync(
       "git",
-      ["log", "-1", "--format=%H", "--", "docs/genealogy/indexing/scan-extraction.md"],
-      { encoding: "utf8" },
+      ["log", "-1", "--format=%H", "--", "docs/scan-extraction.md"],
+      // The procedure is in this repository, whatever folder the tool runs in.
+      { encoding: "utf8", cwd: join(import.meta.dirname, "../..") },
     ).trim();
   } catch {
     return undefined;

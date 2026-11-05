@@ -76,7 +76,8 @@ async function ancestorsOf(
     if (rooted.has(next)) continue;
     rooted.add(next);
     const reply = await fetcher.pedigree(next);
-    if (reply === null) throw new Error(`no pedigree for ${next}: not logged in, or no such person`);
+    if (reply === null)
+      throw new Error(`no pedigree for ${next}: not logged in, or no such person`);
     const found = pedigreeIds(pedigreeSchema.parse(reply));
     for (const id of found.alive) ids.add(id);
     for (const id of found.living) living.add(id);
@@ -87,7 +88,9 @@ async function ancestorsOf(
 
 async function attachSources(fetcher: TreeFetcher, id: string): Promise<TreePerson["sources"]> {
   const refs = entityRefsSchema.parse(await fetcher.sourceRefs(id));
-  const sourceIds = refs.entityRefs.filter((r) => r.value.type === "SOURCE").map((r) => r.value.uri);
+  const sourceIds = refs.entityRefs
+    .filter((r) => r.value.type === "SOURCE")
+    .map((r) => r.value.uri);
   if (sourceIds.length === 0) return [];
   const links = sourceLinksSchema.parse(await fetcher.sourceLinks(sourceIds));
   return links.sources.flatMap((s) => {
@@ -131,7 +134,10 @@ export async function crawlTrees(
         (details.sourceCount ?? 0) > 0 ? await attachSources(fetcher, id) : person.sources;
       result = { kind: "person", person: { ...person, sources } };
     } else {
-      result = { kind: "excluded", excluded: { id, reason: state === "living" ? "living" : "unknown" } };
+      result = {
+        kind: "excluded",
+        excluded: { id, reason: state === "living" ? "living" : "unknown" },
+      };
     }
     judged.set(id, result);
     return result;

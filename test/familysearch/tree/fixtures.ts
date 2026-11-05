@@ -1,5 +1,5 @@
 // Fictional replies of the FamilySearch tree API, in the shape the import reads.
-import type { TreeFetcher } from "../../../src/genealogy/import/familysearch-tree/crawl.ts";
+import type { TreeFetcher } from "../../../src/familysearch/tree/crawl.ts";
 
 export function summary(
   id: string,

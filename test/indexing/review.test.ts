@@ -5,8 +5,8 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
 import { z } from "zod";
-import { openCaseDb } from "../../../src/genealogy/indexing/db.ts";
-import { ingestReading } from "../../../src/genealogy/indexing/ingest.ts";
+import { openCaseDb } from "../../src/indexing/db.ts";
+import { ingestReading } from "../../src/indexing/ingest.ts";
 import {
   errorRate,
   findItem,
@@ -22,14 +22,14 @@ import {
   setStatus,
   type ItemRef,
   type ReviewSet,
-} from "../../../src/genealogy/indexing/review.ts";
+} from "../../src/indexing/review.ts";
 import {
   runFileName,
   startRun,
   writeRunErrorRate,
   writeRunReport,
-} from "../../../src/genealogy/indexing/run.ts";
-import { buildSample } from "../../../src/genealogy/indexing/sample.ts";
+} from "../../src/indexing/run.ts";
+import { buildSample } from "../../src/indexing/sample.ts";
 
 function yamlOf(path: string): Record<string, unknown> {
   return z.record(z.string(), z.unknown()).parse(parse(readFileSync(path, "utf8")));

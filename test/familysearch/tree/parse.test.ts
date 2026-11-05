@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { detailsSchema } from "../../../src/genealogy/import/familysearch-tree/api.ts";
+import { detailsSchema } from "../../../src/familysearch/tree/api.ts";
 import {
   livingOf,
   readFact,
   readFormalDate,
   readPerson,
   splitGiven,
-} from "../../../src/genealogy/import/familysearch-tree/parse.ts";
+} from "../../../src/familysearch/tree/parse.ts";
 import { fact, summary } from "./fixtures.ts";
 
 describe("readFormalDate", () => {

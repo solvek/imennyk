@@ -2,26 +2,18 @@ import { copyFileSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "n
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import type pg from "pg";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { queryRows } from "../../../src/core/db/query.ts";
-import {
-  SCHEMA_VERSION,
-  migrate,
-  openCaseDb,
-  selectRows,
-} from "../../../src/genealogy/indexing/db.ts";
+import { SCHEMA_VERSION, migrate, openCaseDb, selectRows } from "../../src/indexing/db.ts";
 import {
   DATE_QUALS,
   EVENT_TYPES,
   GENDERS,
   PLACE_TYPES,
   TIE_TYPES,
-} from "../../../src/genealogy/indexing/enums.ts";
-import { ATTRIBUTE_TYPES } from "../../../src/genealogy/attribute-types.ts";
-import { savePulled } from "../../../src/genealogy/indexing/pull.ts";
-import { connect } from "../../db.ts";
+} from "../../src/indexing/enums.ts";
+import { ATTRIBUTE_TYPES } from "../../src/indexing/attribute-types.ts";
+import { savePulled } from "../../src/indexing/pull.ts";
 
 function addScan(db: DatabaseSync, name = "n_001", width = 1000, height = 800): number {
   const { lastInsertRowid } = db
@@ -105,7 +97,7 @@ describe("case database", () => {
   });
 });
 
-const MIGRATIONS = join(import.meta.dirname, "../../../src/genealogy/indexing/migrations");
+const MIGRATIONS = join(import.meta.dirname, "../../src/indexing/migrations");
 
 const sampleRow = z.object({
   id: z.number(),
@@ -289,39 +281,8 @@ describe("scans, boxes and mapping rules", () => {
   });
 });
 
-let client: pg.Client;
-beforeAll(async () => {
-  client = await connect();
-});
-afterAll(async () => {
-  await client.end();
-});
-
-async function pgEnum(name: string): Promise<string[]> {
-  const rows = await queryRows(
-    client,
-    z.object({ value: z.string() }),
-    `select e.enumlabel as value
-       from pg_enum e
-       join pg_type t on t.oid = e.enumtypid
-       join pg_namespace n on n.oid = t.typnamespace
-      where n.nspname = 'ddb' and t.typname = $1
-      order by e.enumsortorder`,
-    [name],
-  );
-  return rows.map((row) => row.value);
-}
-
-describe("enums agree with ddb", () => {
-  it("has the same lists as pg_enum", async () => {
-    expect([...EVENT_TYPES].toSorted()).toEqual((await pgEnum("event_type")).toSorted());
-    expect([...TIE_TYPES].toSorted()).toEqual((await pgEnum("tie_type")).toSorted());
-    expect([...DATE_QUALS].toSorted()).toEqual((await pgEnum("date_qual")).toSorted());
-    expect([...GENDERS].toSorted()).toEqual((await pgEnum("gender")).toSorted());
-    expect([...PLACE_TYPES].toSorted()).toEqual((await pgEnum("place_type")).toSorted());
-  });
-
-  it("accepts every ddb value in the sqlite CHECK lists and nothing else", async () => {
+describe("the vocabulary of the bank", () => {
+  it("accepts every value of the vocabulary in the sqlite CHECK lists and nothing else", () => {
     const db = openCaseDb(":memory:");
     const scan = addScan(db);
     const run = addRun(db);
@@ -334,7 +295,7 @@ describe("enums agree with ddb", () => {
         .lastInsertRowid,
     );
 
-    for (const value of await pgEnum("event_type")) {
+    for (const value of EVENT_TYPES) {
       db.prepare("insert into event (run_id, scan_id, type) values (?, ?, ?)").run(
         run,
         scan,
@@ -345,7 +306,7 @@ describe("enums agree with ddb", () => {
       db.prepare("insert into event (run_id, scan_id, type) values (?, ?, 'bogus')").run(run, scan),
     ).toThrow();
 
-    for (const value of await pgEnum("tie_type")) {
+    for (const value of TIE_TYPES) {
       db.prepare(
         "insert into tie (run_id, scan_id, person_id, other_id, type) values (?, ?, ?, ?, ?)",
       ).run(run, scan, person, other, value);
@@ -358,7 +319,7 @@ describe("enums agree with ddb", () => {
         .run(run, scan, person, other),
     ).toThrow();
 
-    for (const value of await pgEnum("date_qual")) {
+    for (const value of DATE_QUALS) {
       db.prepare("insert into person (run_id, scan_id, birth_qual) values (?, ?, ?)").run(
         run,
         scan,
@@ -371,7 +332,7 @@ describe("enums agree with ddb", () => {
         .run(run, scan),
     ).toThrow();
 
-    for (const value of await pgEnum("gender")) {
+    for (const value of GENDERS) {
       db.prepare("insert into person (run_id, scan_id, gender) values (?, ?, ?)").run(
         run,
         scan,
@@ -382,7 +343,7 @@ describe("enums agree with ddb", () => {
       db.prepare("insert into person (run_id, scan_id, gender) values (?, ?, 'x')").run(run, scan),
     ).toThrow();
 
-    for (const value of await pgEnum("place_type")) {
+    for (const value of PLACE_TYPES) {
       db.prepare("insert into place (run_id, scan_id, name, type) values (?, ?, 'p', ?)").run(
         run,
         scan,
@@ -396,7 +357,7 @@ describe("enums agree with ddb", () => {
     ).toThrow();
   });
 
-  it("accepts exactly the attribute types of the well", () => {
+  it("accepts exactly the attribute types of the vocabulary", () => {
     const db = openCaseDb(":memory:");
     const scan = addScan(db);
     const run = addRun(db);

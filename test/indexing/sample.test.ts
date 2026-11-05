@@ -5,11 +5,11 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
 import { z } from "zod";
-import { SAMPLE_SIZE } from "../../../src/genealogy/indexing/constants.ts";
-import { openCaseDb, selectRows } from "../../../src/genealogy/indexing/db.ts";
-import { ingestReading } from "../../../src/genealogy/indexing/ingest.ts";
-import { runFileName, startRun, writeRunReport } from "../../../src/genealogy/indexing/run.ts";
-import { buildSample, sampleMentions } from "../../../src/genealogy/indexing/sample.ts";
+import { SAMPLE_SIZE } from "../../src/indexing/constants.ts";
+import { openCaseDb, selectRows } from "../../src/indexing/db.ts";
+import { ingestReading } from "../../src/indexing/ingest.ts";
+import { runFileName, startRun, writeRunReport } from "../../src/indexing/run.ts";
+import { buildSample, sampleMentions } from "../../src/indexing/sample.ts";
 
 function caseWithSurnames(count: number): { db: DatabaseSync; run: number } {
   const db = openCaseDb(":memory:");

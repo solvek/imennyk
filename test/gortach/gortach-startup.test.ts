@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { startupMessage } from "../../src/web/gortach/startup.ts";
+import { startupMessage } from "../../src/gortach/startup.ts";
 
 describe("startupMessage", () => {
   it("prints the local address and the tunnel command", () => {
