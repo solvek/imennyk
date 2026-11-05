@@ -5,7 +5,7 @@ Instructions for coding agents (Claude Code, Cursor, Codex, …) working on Imen
 The human owner does not review code. **Types, linters and tests are the reviewer.** Treat every rule below as mandatory.
 
 ## Project
-Imennyk (Ukrainian «Іменник») indexes people in archival documents: an agent or a person reads the scans of a case, and the result is a **bank** — a local SQLite database of persons, events, ties, places and doubts, ready to be loaded into a genealogy database. It is open source (Apache 2.0). Read before working:
+Imennyk (Ukrainian «Іменник») is the open-source repository that prepares data for loading into the well (криниця, the database of Grapa), above all by indexing people in archival documents: an agent or a person reads the scans of a case, and the result is a **bank** — a local SQLite database of persons, events, ties, places and doubts, ready to be loaded into a genealogy database. It is open source (Apache 2.0). Read before working:
 - `docs/overview.md` — goals, boundaries, stages
 - `openspec/specs/` — behaviour the tool guarantees
 

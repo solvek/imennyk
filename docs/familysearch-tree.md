@@ -1,10 +1,10 @@
-# Імпорт дерев FamilySearch
-Як вносимо в криницю родоводи з FamilySearch Family Tree: предків однієї особи (корінь), яких бачить залогінений користувач. Це не індексування сканів, але шлях той самий: завантажити → локальна sqlite справи → внесення в криницю. Структура sqlite та сама, що в індексуванні ([scan-extraction.md](scan-extraction.md)), тож результат так само можна оглянути, а внесення так само відтворюване.
+# Дерева FamilySearch у банку
+Як банкуємо родоводи з FamilySearch Family Tree: предків однієї особи (корінь), яких бачить залогінений користувач. Це не індексування сканів, але шлях той самий: завантажити → банка справи (локальна sqlite) → заливка в криницю (у Grapa). Структура sqlite та сама, що в індексуванні ([scan-extraction.md](scan-extraction.md)), тож результат так само можна оглянути, а внесення так само відтворюване.
 
-Інструмент — `pnpm familysearch:tree`, код у `src/genealogy/import/familysearch-tree/`. Журнал імпортів — [import/familysearch-trees.md](../../../import/familysearch-trees.md).
+Інструмент — `pnpm familysearch:tree` (`fetch`, `ingest`), код у `src/familysearch/tree/`. Заливку (`enter`, `places`) робить Grapa: [familysearch-tree.md](https://github.com/solvek/grapa/blob/main/docs/genealogy/indexing/familysearch-tree.md) у Grapa; журнал імпортів власника — [import/familysearch-trees.md](https://github.com/solvek/grapa/blob/main/import/familysearch-trees.md).
 
 ## Правило про живих: для всіх дерев
-**З жодного дерева не вносимо живих людей.** Це стосується всіх родоводів: FamilySearch, GEDCOM, Gramps, таблиць. Правило одне, воно в коді: `src/genealogy/import/living.ts` (`livingState`, `LIVING_HORIZON_YEARS = 110`), і кожен імпорт дерев користується ним.
+**З жодного дерева не вносимо живих людей.** Це стосується всіх родоводів: FamilySearch, GEDCOM, Gramps, таблиць. Правило одне, воно в коді: `src/living.ts` (`livingState`, `LIVING_HORIZON_YEARS = 110`), і кожен імпорт дерев користується ним.
 
 Людина внесена, лише якщо відомо, що вона померла. Порядок перевірки:
 1. Джерело саме позначило її живою (`living` у FamilySearch, `_LIVING` / приватність в інших) — жива.
@@ -34,25 +34,22 @@
 
 ## Етапи
 ```bash
-pnpm familysearch:tree fetch import/indexing/FamilySearch-tree --root GG22-75Z --root GG22-SQH
-pnpm familysearch:tree ingest import/indexing/FamilySearch-tree --model <модель>
-pnpm familysearch:tree enter import/indexing/FamilySearch-tree --actor "agent: …" --places import/indexing/FamilySearch-tree/places.json --dry-run
-pnpm familysearch:tree enter … --apply
+pnpm familysearch:tree fetch <справи>/FamilySearch-tree --root GG22-75Z --root GG22-SQH
+pnpm familysearch:tree ingest <справи>/FamilySearch-tree --model <модель>
 ```
 1. **fetch** — обхід предків кожного кореня, фільтр живих, очищені картки у `raw/tree-<корінь>.json`. Друкує, скільки осіб, скільки відсіяно як живих і як невідомих. `--allow <id>` дозволяє невідому особу.
 2. **ingest** — кожен `raw/tree-*.json`, ще не прочитаний, стає прогоном (`run`) у `case.sqlite`. Особа, яка вже є в справі (з іншого дерева), вдруге не пишеться.
-3. **enter** — план з sqlite (без PostgreSQL), потім одна транзакція. `--dry-run` відкочує. Кандидатів для місць, не зіставлених у `places.json`, друкує за назвою.
-4. **places** — місця: створює ті, яких у криниці ще немає, і підставляє назву місця в події, внесені лише з текстом (він лежить приміткою «Місце: …», поки місце невідоме): `pnpm familysearch:tree places <справа> --actor … --places places.json (--dry-run | --apply)`. Повторний запуск нічого не змінює.
+Далі банку заливає Grapa: `enter` (план з банки, одна транзакція) і `places` (місця, яких у криниці ще немає).
 
 Як в індексуванні: проміжна база — `case.sqlite` справи, ідентифікатори локальні, `ddb_map` зв'язує їх з криницею після внесення.
 
 ## Папка справи
-Одна справа — всі дерева FamilySearch: `import/indexing/FamilySearch-tree/` (нове дерево — нове читання в тій самій папці, як нова парафія в справі). Імена людей з родоводів у git не йдуть (`.gitignore`): комітиться лише `places.json` (зіставлення місць без персональних даних) і журнал `import/familysearch-trees.md`.
+Одна справа — всі дерева FamilySearch: `<справи>/FamilySearch-tree/` (нове дерево — нове читання в тій самій папці, як нова парафія в справі). Імена людей з родоводів у git не йдуть (`.gitignore`): комітиться лише `places.json` (зіставлення місць без персональних даних) і журнал `import/familysearch-trees.md`.
 
 | Файл | Що |
 |---|---|
 | `raw/tree-<id>.json` | очищені картки дерева (`treeBundleSchema`); локально |
-| `case.sqlite` | локальна база, схема індексування (міграції `src/genealogy/indexing/migrations/`); локально |
+| `case.sqlite` | локальна база, схема індексування (міграції `src/indexing/migrations/`); локально |
 | `places.json` | `{"<id місця FamilySearch>": <id місця в криниці>}`; у git |
 
 ## Що куди лягає в sqlite
@@ -77,27 +74,15 @@ pnpm familysearch:tree enter … --apply
 - Діапазони, «до», «після» в межі не перетворюються: текст дати лежить у `note`.
 - Календар не перераховуємо.
 
-## Внесення в криницю
-Джерело — `FamilySearch Family Tree` (`source.type = tree`, сховище FamilySearch, `url = https://www.familysearch.org/tree`); воно одне на всі дерева. Створюється при першому внесенні, далі знаходиться за адресою.
-
-| Об'єкт | Як |
-|---|---|
-| цитата | одна на особу: `page` = id особи, `url` = сторінка особи |
-| особа | та, на яку вже веде цитата з цим id, — та сама згадка, вдруге не пишеться. Нова особа — рядок `person` + імена через словник `name` |
-| подія | народження, смерть, шлюб з цитатою особи; `place_name` — назва місця, як її пише FamilySearch, у місці криниці, якщо id місця FamilySearch є в `places.json`; інакше текст місця — примітка «Місце: …» |
-| зв'язок | `child` і `spouse` через `event_tie` до події, якщо вона є; інакше окремо; цитата — сторінка особи, на якій він записаний |
-| атрибути | посилання на прикріплені джерела й латинське ім'я — атрибути особи з цитатою |
-
-Місця криниці зіставляємо **за координатами**, а не лише за назвою: у криниці десятки сіл з однаковими назвами (відомі дублікати), а FamilySearch часто пише назву латиницею чи спотворено. Спершу перевіряємо, чи місце вже є поблизу (до кількох км, `ddb.place.geom`); якщо є — id у `places.json`. Якщо немає — рішення `{"create": {type, name, names, lat, lon}}`: команда `places` створює місце (круг навколо точки, `geom_origin = own`), основна назва українською (для польських сіл — транслітерація польської назви, польська форма й написання FamilySearch — другі назви), координати — з FamilySearch або польських реєстрів (TERYT / SIMC). Створене місце файл запам'ятовує як id.
-
-Межі id нового, як і в інших імпортах, записуємо в журнал (журнал змін вимкнено).
+## Заливка в криницю
+Джерело, цитати, зіставлення осіб і місць криниці (за координатами), межі id — [familysearch-tree.md, «Внесення в криницю»](https://github.com/solvek/grapa/blob/main/docs/genealogy/indexing/familysearch-tree.md#внесення-в-криницю) у Grapa.
 
 ## Що поки не вносимо
 - Нащадків і братів-сестер предків (їх можна додати окремою опцією: у `details` вони є в списках сім'ї).
 - Нотатки, спогади й фото особи (на цих деревах їх немає).
 - Живі та невідомі за правилом вище.
 
-## Перевірка після запису
+## Перевірка після заливки (у Grapa)
 1. Кількість: осіб, подій, зв'язків, цитат — як у плані (`enter --dry-run`); повторний запуск дає `known` = усім особам і нічого не пише.
 2. Картки кількох осіб: ім'я, дати, місце, батьки, цитата з правильною сторінкою.
 3. Прізвище, що стоїть як ім'я, і ім'я з двох слів без по батькові — ознака хибного поділу імені.

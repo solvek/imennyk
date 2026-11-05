@@ -34,9 +34,9 @@
 ## Повнорозмірний скан
 Переглядач показує зображення у вигляді піраміди тайлів (Deep Zoom): `https://sg30p0.familysearch.org/service/records/storage/deepzoomcloud/dz/v1/apid:<id>/image_files/<рівень>/<колонка>_<рядок>.jpg`. `apid` — внутрішній ідентифікатор зображення, його видно лише в адресах тайлів у відкритому переглядачі, а не в ark. Рівень 9 — мініатюра, найвищий (у наших справах 13) — повна роздільність (~6200×5000 px). Тайл 256×256 px, між тайлами перекриття 1 px (257/258 px).
 
-Помічник [`import/familysearch-dgs/scan.mjs`](../../../import/familysearch-dgs/scan.mjs):
+Помічник [`tools/familysearch-scan/scan.mjs`](../tools/familysearch-scan/scan.mjs):
 ```
-node import/familysearch-dgs/scan.mjs '<посилання на зображення>' /var/tmp/<справа>/n048.jpg
+node tools/familysearch-scan/scan.mjs '<посилання на зображення>' /var/tmp/<справа>/n048.jpg
 ```
 Що він робить:
 1. Відкриває посилання у новій вкладці й чекає тайли переглядача, з першого виймає `apid`.
@@ -48,7 +48,7 @@ node import/familysearch-dgs/scan.mjs '<посилання на зображен
 Далі скан читають збільшеними фрагментами за [scan-extraction.md](scan-extraction.md), крок 3. Для огляду спершу зменшена копія (`magick n048.jpg -resize 22% n048_s.jpg`, ~1360 px завширшки), потім смуги з потрібних місць.
 
 ## Дерева (Family Tree)
-Той самий залогінений Chrome віддає й родоводи: вкладка на `familysearch.org` викликає `fetch('/service/tree/…')` і повертає JSON; куки й токени не виходять з браузера (`/platform/…` без токена дає 401, ним не користуємось). Адреси, обхід поколінь і правило про живих — [familysearch-tree.md](familysearch-tree.md), код — `src/genealogy/import/familysearch-tree/browser.ts`.
+Той самий залогінений Chrome віддає й родоводи: вкладка на `familysearch.org` викликає `fetch('/service/tree/…')` і повертає JSON; куки й токени не виходять з браузера (`/platform/…` без токена дає 401, ним не користуємось). Адреси, обхід поколінь і правило про живих — [familysearch-tree.md](familysearch-tree.md), код — `src/familysearch/tree/browser.ts`.
 
 ## Коли щось не працює
 | Ознака | Причина й що робити |
