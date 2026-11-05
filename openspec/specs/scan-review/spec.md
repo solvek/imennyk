@@ -1,7 +1,7 @@
 # scan-review Specification
 
 ## Purpose
-TBD - created by archiving change move-from-grapa. Update Purpose after archive.
+Перегляд результатів індексування справи людиною в локальному веб-додатку Гортач: закриття сумнівів і перевірка фіксованої вибірки прізвищ з виправленням значень у банці справи та запис відсотка помилок прогону. Інструмент — `pnpm gortach`.
 
 ## Requirements
 
