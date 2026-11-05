@@ -62,6 +62,52 @@ describe("case database", () => {
     rmSync(dir, { recursive: true });
   });
 
+  it("rebuilds a table that other tables point at, when they have rows", () => {
+    const dir = mkdtempSync(join(tmpdir(), "indexing-migrations-"));
+    writeFileSync(
+      join(dir, "0001_a.sql"),
+      `create table parent (id integer primary key, name text) strict;
+       create table child (id integer primary key, parent_id integer references parent (id)) strict;`,
+    );
+    const db = new DatabaseSync(":memory:");
+    db.exec("pragma foreign_keys = on");
+    migrate(db, dir);
+    db.exec(
+      "insert into parent (id, name) values (1, 'a'); insert into child (id, parent_id) values (1, 1)",
+    );
+    writeFileSync(
+      join(dir, "0002_rebuild.sql"),
+      `create table parent_new (id integer primary key, name text not null default '') strict;
+       insert into parent_new (id, name) select id, coalesce(name, '') from parent;
+       drop table parent;
+       alter table parent_new rename to parent;`,
+    );
+    migrate(db, dir);
+    expect(
+      selectRows(db, z.object({ n: z.number() }), "select count(*) as n from child")[0]?.n,
+    ).toBe(1);
+    expect(db.prepare("pragma foreign_key_check").all()).toEqual([]);
+    rmSync(dir, { recursive: true });
+  });
+
+  it("refuses a migration that leaves a broken reference", () => {
+    const dir = mkdtempSync(join(tmpdir(), "indexing-migrations-"));
+    writeFileSync(
+      join(dir, "0001_a.sql"),
+      `create table parent (id integer primary key) strict;
+       create table child (id integer primary key, parent_id integer references parent (id)) strict;
+       insert into parent (id) values (1); insert into child (id, parent_id) values (1, 1);`,
+    );
+    const db = new DatabaseSync(":memory:");
+    db.exec("pragma foreign_keys = on");
+    migrate(db, dir);
+    writeFileSync(join(dir, "0002_bad.sql"), "delete from parent;");
+    expect(() => {
+      migrate(db, dir);
+    }).toThrow();
+    rmSync(dir, { recursive: true });
+  });
+
   it("applying the migrations again changes nothing", () => {
     const db = openCaseDb(":memory:");
     addScan(db);

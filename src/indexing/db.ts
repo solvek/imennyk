@@ -50,17 +50,32 @@ export function migrate(db: DatabaseSync, dir: string = MIGRATIONS_DIR): void {
       `database has schema version ${String(current)}, newer than the code (${String(files.length)})`,
     );
   }
-  files.slice(current).forEach((file, i) => {
-    db.exec("begin");
-    try {
-      db.exec(readFileSync(join(dir, file), "utf8"));
-      db.exec(`pragma user_version = ${String(current + i + 1)}`);
-      db.exec("commit");
-    } catch (error) {
-      db.exec("rollback");
-      throw error;
-    }
-  });
+  // SQLite's way to rebuild a table others point at: foreign keys off (the pragma does nothing
+  // inside a transaction), run the migration, check every reference, then switch them back on.
+  // Deferred checks are not enough: dropping the old table counts its children as broken for good.
+  const keys = z
+    .object({ foreign_keys: z.number() })
+    .parse({ ...db.prepare("pragma foreign_keys").get() }).foreign_keys;
+  try {
+    db.exec("pragma foreign_keys = off");
+    files.slice(current).forEach((file, i) => {
+      db.exec("begin");
+      try {
+        db.exec(readFileSync(join(dir, file), "utf8"));
+        const broken = db.prepare("pragma foreign_key_check").all();
+        if (broken.length > 0) {
+          throw new Error(`${file} left ${String(broken.length)} broken references`);
+        }
+        db.exec(`pragma user_version = ${String(current + i + 1)}`);
+        db.exec("commit");
+      } catch (error) {
+        db.exec("rollback");
+        throw error;
+      }
+    });
+  } finally {
+    db.exec(`pragma foreign_keys = ${keys === 0 ? "off" : "on"}`);
+  }
 }
 
 /** Opens (and creates) the database at `path`, with foreign keys on and the schema current. */

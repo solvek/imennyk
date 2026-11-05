@@ -8,6 +8,7 @@ import { dumpCaseDb } from "./dump.ts";
 import { caseHints, formatHints, parseNameKind } from "./hints.ts";
 import { openCaseDb, selectRows } from "./db.ts";
 import { ingestReading } from "./ingest.ts";
+import { mergeBanks } from "./merge.ts";
 import { startRun, writeRunReport } from "./run.ts";
 import { buildSample } from "./sample.ts";
 import { addScans } from "./scans.ts";
@@ -20,6 +21,7 @@ const USAGE = `usage: pnpm indexing <command> <case dir> [options]
   sample <run id>                     build (once per run) and print the sample of its surname places
   hints [--kind given|patronymic|surname]   print the dictionary and the names already read in this case
   run-report <run id>                 write run-<datetime>.yaml
+  merge <source case dir>             add the bank of another case dir to this one (scans must differ)
   dump <file.sqlite>                  text dump for git diff (the first argument is the file)`;
 
 function readJson(path: string): unknown {
@@ -107,6 +109,13 @@ function main(argv: string[]): void {
       )[0];
       const ids = buildSample(db, stored?.value ?? seed, runIdOf(arg));
       console.log(`sample: ${String(ids.length)} places`);
+      return;
+    }
+    case "merge": {
+      const source = join(requireArg(arg, "source case dir"), "case.sqlite");
+      openCaseDb(source).close(); // brings the source to the current schema
+      const result = mergeBanks(db, source);
+      console.log(JSON.stringify(result));
       return;
     }
     case "hints": {
