@@ -1,6 +1,6 @@
 // Helper for a FamilySearch image group (like scan.mjs, but for many images of one group), through the Chrome on the host (CDP, port 9222).
 //   node import/familysearch-dgs/group.mjs apids <first-image-url> <count> <out.json>
-//       walks the viewer with ArrowRight and writes {image number: deep-zoom id (apid)} for every image of the group;
+//       walks the viewer with ArrowRight and writes {image number: deep-zoom id (apid)} for every image of the group, and {image number: ark} next to it as <out>-arks.json;
 //   node import/familysearch-dgs/group.mjs tiles <apids.json> <level|top|-N> <outdir> <1,5-9,…>
 //       downloads the listed images as <outdir>/<n>.jpg; level: absolute, «top» (full size) or N levels below the top (-3 = a small preview).
 // The tiles are loaded as <img> inside the logged-in browser and read through CDP Network.getResponseBody; cookies never leave the browser.
@@ -36,19 +36,23 @@ if (cmd === 'apids') {
   const [url, count, out] = args; const total = Number(count);
   const tab = await openTab(url);
   try {
-    const apids = {};
+    const apids = {}; const arks = {};
+    const arkNow = () => tab.ev(`(location.href.match(/3:1:([A-Z0-9-]+)/)||[])[1]||null`);
     const waitBase = async (prev) => { for (let i = 0; i < 200; i++) { await sleep(100); const b = await tab.ev(tileBase); if (b && b !== prev) return b; } return null; };
     let base = await waitBase(null); if (!base) throw new Error('viewer did not load (not logged in?)');
-    let n = await tab.ev(imgNum); apids[n] = base.match(/apid:([^/]+)/)?.[1];
+    let n = await tab.ev(imgNum); apids[n] = base.match(/apid:([^/]+)/)?.[1]; arks[n] = await arkNow();
     while (n < total) {
       await tab.ev(`document.body.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowRight',code:'ArrowRight',keyCode:39,which:39,bubbles:true}))`);
       const nb = await waitBase(base); if (!nb) { console.error('stuck after', n); break; }
       base = nb; await sleep(150);
       const m = await tab.ev(imgNum); if (m !== n + 1) console.error('number jump', n, '->', m);
       n = m; apids[n] = base.match(/apid:([^/]+)/)?.[1];
+      for (let i = 0; i < 30 && (await arkNow()) === arks[n - 1]; i++) await sleep(100);
+      arks[n] = await arkNow();
       if (n % 50 === 0) console.error('at', n);
     }
     fs.writeFileSync(out, JSON.stringify(apids));
+    fs.writeFileSync(out.replace(/\.json$/, '-arks.json'), JSON.stringify(arks)); // image number → ark, for the page links of the scans
     console.log(JSON.stringify({ got: Object.keys(apids).length, last: n }));
   } finally { await tab.close(); }
 } else if (cmd === 'tiles') {
