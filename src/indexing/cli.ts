@@ -7,6 +7,7 @@ import { z } from "zod";
 import { dumpCaseDb } from "./dump.ts";
 import { caseHints, formatHints, parseNameKind } from "./hints.ts";
 import { openCaseDb, selectRows } from "./db.ts";
+import { compactToReading } from "./compact.ts";
 import { ingestReading } from "./ingest.ts";
 import { mergeBanks } from "./merge.ts";
 import { startRun, writeRunReport } from "./run.ts";
@@ -21,6 +22,7 @@ const USAGE = `usage: pnpm indexing <command> <case dir> [options]
   sample <run id>                     build (once per run) and print the sample of its surname places
   hints [--kind given|patronymic|surname]   print the dictionary and the names already read in this case
   run-report <run id>                 write run-<datetime>.yaml
+  compact <run id> <file>             read a scan from the compact notation (docs/document-types/confession.md) and ingest it
   merge <source case dir>             add the bank of another case dir to this one (scans must differ)
   dump <file.sqlite>                  text dump for git diff (the first argument is the file)`;
 
@@ -109,6 +111,26 @@ function main(argv: string[]): void {
       )[0];
       const ids = buildSample(db, stored?.value ?? seed, runIdOf(arg));
       console.log(`sample: ${String(ids.length)} places`);
+      return;
+    }
+    case "compact": {
+      const runId = Number(requireArg(arg, "run id"));
+      const file = requireArg(positionals[3], "compact file");
+      // Counters continue from the last serial numbers this run has written.
+      const counter = (gender: string): number =>
+        selectRows(
+          db,
+          z.object({ n: z.number() }),
+          `select coalesce(max(cast(a.value as integer)), 0) as n from attribute a
+             join person p on p.id = a.person_id
+            where a.type = 'serial' and p.run_id = ? and p.gender = ?`,
+          [runId, gender],
+        )[0]?.n ?? 0;
+      const { reading, summary } = compactToReading(readFileSync(file, "utf8"), {
+        start: { m: counter("male"), f: counter("female") },
+      });
+      const result = ingestReading(db, runId, reading);
+      console.log(JSON.stringify({ summary, result }));
       return;
     }
     case "merge": {
