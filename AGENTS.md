@@ -7,6 +7,7 @@ The human owner does not review code. **Types, linters and tests are the reviewe
 ## Project
 Imennyk (Ukrainian «Іменник») is the open-source repository that prepares data for loading into the well (криниця, the database of Grapa), above all by indexing people in archival documents: an agent or a person reads the scans of a case, and the result is a **bank** — a local SQLite database of persons, events, ties, places and doubts, ready to be loaded into a genealogy database. It is open source (Apache 2.0). Read before working:
 - `docs/overview.md` — goals, boundaries, stages
+- `docs/document-types/` — one file per document type (confession lists, metric books): page layout, columns, event and ties, pitfalls; read before indexing a new type
 - `openspec/specs/` — behaviour the tool guarantees
 
 Imennyk was split out of [Grapa](https://github.com/solvek/grapa), a genealogical research platform; Grapa loads banks into its database (the well) and stays a separate project. Imennyk knows nothing about Grapa's database: it does not import its code, its schema or its connection. Loading a bank into a database is the job of that database's own tools.
