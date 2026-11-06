@@ -1,7 +1,7 @@
 # Дерева FamilySearch у банку
 Як банкуємо родоводи з FamilySearch Family Tree: предків однієї особи (корінь), яких бачить залогінений користувач. Це не індексування сканів, але шлях той самий: завантажити → банка справи (локальна sqlite) → заливка в криницю (у Grapa). Структура sqlite та сама, що в індексуванні ([scan-extraction.md](scan-extraction.md)), тож результат так само можна оглянути, а внесення так само відтворюване.
 
-Інструмент — `pnpm familysearch:tree` (`fetch`, `ingest`), код у `src/familysearch/tree/`. Заливку (`enter`, `places`) робить Grapa: [familysearch-tree.md](https://github.com/solvek/grapa/blob/main/docs/genealogy/indexing/familysearch-tree.md) у Grapa; журнал імпортів власника — [import/familysearch-trees.md](https://github.com/solvek/grapa/blob/main/import/familysearch-trees.md).
+Інструмент — `pnpm familysearch:tree` (`fetch`, `ingest`), код у `src/familysearch/tree/`. Заливку (`enter`, `places`) робить Grapa: [bank-entry.md, «Дерева FamilySearch»](https://github.com/solvek/grapa/blob/main/docs/genealogy/indexing/bank-entry.md#дерева-familysearch) у Grapa; журнал імпортів власника — [import/familysearch-trees.md](https://github.com/solvek/grapa/blob/main/import/familysearch-trees.md).
 
 ## Правило про живих: для всіх дерев
 **З жодного дерева не вносимо живих людей.** Це стосується всіх родоводів: FamilySearch, GEDCOM, Gramps, таблиць. Правило одне, воно в коді: `src/living.ts` (`livingState`, `LIVING_HORIZON_YEARS = 110`), і кожен імпорт дерев користується ним.
@@ -75,7 +75,7 @@ pnpm familysearch:tree ingest <справи>/FamilySearch-tree --model <моде
 - Календар не перераховуємо.
 
 ## Заливка в криницю
-Джерело, цитати, зіставлення осіб і місць криниці (за координатами), межі id — [familysearch-tree.md, «Внесення в криницю»](https://github.com/solvek/grapa/blob/main/docs/genealogy/indexing/familysearch-tree.md#внесення-в-криницю) у Grapa.
+Джерело, цитати, зіставлення осіб і місць криниці (за координатами), межі id — [bank-entry.md, «Дерева FamilySearch»](https://github.com/solvek/grapa/blob/main/docs/genealogy/indexing/bank-entry.md#дерева-familysearch) у Grapa.
 
 ## Що поки не вносимо
 - Нащадків і братів-сестер предків (їх можна додати окремою опцією: у `details` вони є в списках сім'ї).
