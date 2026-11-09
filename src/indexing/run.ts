@@ -1,8 +1,5 @@
-// Runs: one reading pass of a model over scans, and its metafile.
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+// Runs: one reading pass of a model over scans; the bank keeps everything about it.
 import type { DatabaseSync } from "node:sqlite";
-import { parse, stringify } from "yaml";
 import { z } from "zod";
 import { selectRows } from "./db.ts";
 
@@ -42,18 +39,48 @@ const runRow = z.object({
   effort: z.string().nullable(),
   procedure_sha: z.string().nullable(),
   note: z.string().nullable(),
+  sample_size: z.number().nullable(),
+  sample_errors: z.number().nullable(),
+  wer: z.number().nullable(),
 });
 const countRow = z.object({ n: z.number() });
 
-/** File name of the metafile of a run: `run-<datetime>.yaml`, safe for any file system. */
-export function runFileName(startedAt: string): string {
-  return `run-${startedAt.replaceAll(/[^0-9A-Za-z]+/g, "-").replace(/-+$/, "")}.yaml`;
+/** The result of checking the sample of a run: wrong places among all, and their share in %. */
+export interface RunErrorRate {
+  readonly size: number;
+  readonly errors: number;
+  readonly percent: number;
 }
 
-/** Writes the metafile of run `runId` into `dir`; `wer` stays empty until the sample is checked. */
-export function writeRunReport(db: DatabaseSync, runId: number, dir: string): string {
+/** What the bank says about a run: who read, how much, and how well (once the sample is checked). */
+export interface RunSummary {
+  readonly model: string;
+  readonly session: string | null;
+  readonly effort: string | null;
+  readonly procedureSha: string | null;
+  readonly startedAt: string;
+  readonly note: string | null;
+  /** Scans the run wrote anything on. */
+  readonly scansProcessed: number;
+  readonly doubts: number;
+  /** Null until the sample of the run is checked. */
+  readonly errorRate: RunErrorRate | null;
+}
+
+function errorRateOf(row: z.infer<typeof runRow>): RunErrorRate | null {
+  if (row.wer === null || row.sample_errors === null || row.sample_size === null) return null;
+  return { size: row.sample_size, errors: row.sample_errors, percent: row.wer };
+}
+
+function loadRun(db: DatabaseSync, runId: number): z.infer<typeof runRow> {
   const run = selectRows(db, runRow, "select * from run where id = ?", [runId])[0];
   if (run === undefined) throw new Error(`unknown run ${String(runId)}`);
+  return run;
+}
+
+/** The summary of run `runId`, counted from the rows of the bank. */
+export function runSummary(db: DatabaseSync, runId: number): RunSummary {
+  const run = loadRun(db, runId);
   const scans = selectRows(
     db,
     countRow,
@@ -66,83 +93,31 @@ export function writeRunReport(db: DatabaseSync, runId: number, dir: string): st
   const doubts = selectRows(db, countRow, "select count(*) as n from doubt where run_id = ?", [
     runId,
   ])[0]?.n;
-  const path = join(dir, runFileName(run.started_at));
-  writeFileSync(
-    path,
-    stringify({
-      model: run.model,
-      session: run.session,
-      effort: run.effort,
-      procedure_sha: run.procedure_sha,
-      started_at: run.started_at,
-      scans_processed: scans ?? 0,
-      doubts: doubts ?? 0,
-      wer: null,
-      note: run.note,
-    }),
-  );
-  return path;
-}
-
-/** The result of checking the sample of a run: wrong places among all, and their share in %. */
-export interface RunErrorRate {
-  readonly size: number;
-  readonly errors: number;
-  readonly percent: number;
-}
-
-const metafile = z.record(z.string(), z.unknown());
-const recordedRate = z.object({
-  wer: z.number(),
-  sample_errors: z.number(),
-  sample_size: z.number(),
-});
-
-function runPath(db: DatabaseSync, runId: number, dir: string): string {
-  const run = selectRows(db, runRow, "select * from run where id = ?", [runId])[0];
-  if (run === undefined) throw new Error(`unknown run ${String(runId)}`);
-  return join(dir, runFileName(run.started_at));
-}
-
-/**
- * Writes the error rate into the metafile of run `runId`; only `wer`, `sample_errors` and
- * `sample_size` change. A missing metafile is created first.
- */
-export function writeRunErrorRate(
-  db: DatabaseSync,
-  runId: number,
-  dir: string,
-  rate: RunErrorRate,
-): string {
-  const path = existsSync(runPath(db, runId, dir))
-    ? runPath(db, runId, dir)
-    : writeRunReport(db, runId, dir);
-  const content = metafile.parse(parse(readFileSync(path, "utf8")));
-  writeFileSync(
-    path,
-    stringify({
-      ...content,
-      wer: rate.percent,
-      sample_errors: rate.errors,
-      sample_size: rate.size,
-    }),
-  );
-  return path;
-}
-
-/** The error rate recorded in the metafile of run `runId`, or null when there is none yet. */
-export function readRunErrorRate(
-  db: DatabaseSync,
-  runId: number,
-  dir: string,
-): RunErrorRate | null {
-  const path = runPath(db, runId, dir);
-  if (!existsSync(path)) return null;
-  const parsed = recordedRate.safeParse(parse(readFileSync(path, "utf8")));
-  if (!parsed.success) return null;
   return {
-    size: parsed.data.sample_size,
-    errors: parsed.data.sample_errors,
-    percent: parsed.data.wer,
+    model: run.model,
+    session: run.session,
+    effort: run.effort,
+    procedureSha: run.procedure_sha,
+    startedAt: run.started_at,
+    note: run.note,
+    scansProcessed: scans ?? 0,
+    doubts: doubts ?? 0,
+    errorRate: errorRateOf(run),
   };
+}
+
+/** Writes the error rate of run `runId` into the bank; the rest of the run does not change. */
+export function writeRunErrorRate(db: DatabaseSync, runId: number, rate: RunErrorRate): void {
+  loadRun(db, runId);
+  db.prepare("update run set wer = ?, sample_errors = ?, sample_size = ? where id = ?").run(
+    rate.percent,
+    rate.errors,
+    rate.size,
+    runId,
+  );
+}
+
+/** The error rate recorded for run `runId`, or null when its sample is not checked yet. */
+export function readRunErrorRate(db: DatabaseSync, runId: number): RunErrorRate | null {
+  return errorRateOf(loadRun(db, runId));
 }

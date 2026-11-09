@@ -226,7 +226,7 @@ function showCase(
     sample: progress(db, "sample", runId),
     filter,
     rawCount: rawFiles(join(options.root, caseName)).length,
-    recorded: recordedErrorRate(db, join(options.root, caseName), runId),
+    recorded: recordedErrorRate(db, runId),
     context: {
       caseName,
       filter,
@@ -251,7 +251,7 @@ function act(
   if (run === null) throw new NotFound();
   const tab = caseHref(caseName, set, query(filter, shownRun(runs, run)));
   if (set === "sample" && rest.length === 1 && rest[0] === "rate") {
-    recordErrorRate(db, caseDir, run);
+    recordErrorRate(db, run);
     return tab;
   }
   const id = whole(rest[0]);

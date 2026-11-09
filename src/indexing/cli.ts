@@ -1,5 +1,6 @@
 // Thin command line over the indexing library: parses arguments, reads files, prints.
 import { execFileSync } from "node:child_process";
+import { stringify } from "yaml";
 import { readFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import { parseArgs } from "node:util";
@@ -10,7 +11,7 @@ import { openCaseDb, selectRows } from "./db.ts";
 import { compactToReading } from "./compact.ts";
 import { ingestReading } from "./ingest.ts";
 import { mergeBanks } from "./merge.ts";
-import { startRun, writeRunReport } from "./run.ts";
+import { runSummary, startRun } from "./run.ts";
 import { buildSample } from "./sample.ts";
 import { addScans } from "./scans.ts";
 
@@ -21,7 +22,7 @@ const USAGE = `usage: pnpm indexing <command> <case dir> [options]
   ingest <run id> <reading.json>      write the reading of one scan
   sample <run id>                     build (once per run) and print the sample of its surname places
   hints [--kind given|patronymic|surname]   print the dictionary and the names already read in this case
-  run-report <run id>                 write run-<datetime>.yaml
+  run-report <run id>                 print what the bank says about the run (counts, error rate)
   compact <run id> <file>             read a scan from the compact notation (docs/document-types/confession.md) and ingest it
   merge <source case dir>             add the bank of another case dir to this one (scans must differ)
   dump <file.sqlite>                  text dump for git diff (the first argument is the file)`;
@@ -146,7 +147,7 @@ function main(argv: string[]): void {
       return;
     }
     case "run-report":
-      console.log(writeRunReport(db, Number(requireArg(arg, "run id")), caseDir));
+      process.stdout.write(stringify(runSummary(db, Number(requireArg(arg, "run id")))));
       return;
     default:
       console.log(USAGE);

@@ -1,10 +1,8 @@
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import type { DatabaseSync } from "node:sqlite";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { parse } from "yaml";
-import { z } from "zod";
 import { openCaseDb } from "../../src/indexing/db.ts";
 import { ingestReading } from "../../src/indexing/ingest.ts";
 import {
@@ -23,17 +21,8 @@ import {
   type ItemRef,
   type ReviewSet,
 } from "../../src/indexing/review.ts";
-import {
-  runFileName,
-  startRun,
-  writeRunErrorRate,
-  writeRunReport,
-} from "../../src/indexing/run.ts";
+import { startRun, writeRunErrorRate, runSummary } from "../../src/indexing/run.ts";
 import { buildSample } from "../../src/indexing/sample.ts";
-
-function yamlOf(path: string): Record<string, unknown> {
-  return z.record(z.string(), z.unknown()).parse(parse(readFileSync(path, "utf8")));
-}
 
 const box = (y: number) => ({ x: 10, y, w: 100, h: 15 });
 
@@ -418,39 +407,36 @@ describe("error rate", () => {
     expect(errorRate(db, run).size).toBe(20);
   });
 
-  it("records: open places become correct, the rate goes to the metafile of the run", () => {
+  it("records: open places become correct, the rate goes into the run of the bank", () => {
     const { db, run } = twenty();
-    const dir = mkdtempSync(join(tmpdir(), "gortach-run-"));
-    writeRunReport(db, run, dir);
     fixName(db, { set: "sample", id: 1 }, "А");
     fixName(db, { set: "sample", id: 2 }, "Б");
     fixName(db, { set: "sample", id: 3 }, "В");
     setStatus(db, { set: "sample", id: 4 }, "unknown");
-    const rate = recordErrorRate(db, dir, run);
+    const rate = recordErrorRate(db, run);
     expect(rate).toMatchObject({ size: 20, errors: 4, percent: 20 });
     expect(listItems(db, "sample", run, { status: "confirmed" })).toHaveLength(16);
     expect(listItems(db, "sample", run, { status: "open" })).toHaveLength(0);
-    const yaml: unknown = parse(
-      readFileSync(join(dir, runFileName("2026-10-22T10:00:00Z")), "utf8"),
-    );
-    expect(yaml).toMatchObject({ wer: 20, sample_errors: 4, sample_size: 20, model: "test-model" });
-    expect(recordedErrorRate(db, dir, run)).toEqual({ size: 20, errors: 4, percent: 20 });
+    expect(runSummary(db, run)).toMatchObject({
+      model: "test-model",
+      errorRate: { size: 20, errors: 4, percent: 20 },
+    });
+    expect(recordedErrorRate(db, run)).toEqual({ size: 20, errors: 4, percent: 20 });
   });
 
   it("records again after one more fix: 25 %", () => {
     const { db, run } = twenty();
-    const dir = mkdtempSync(join(tmpdir(), "gortach-run-"));
     for (const rank of [1, 2, 3]) fixName(db, { set: "sample", id: rank }, `Нове${String(rank)}`);
     setStatus(db, { set: "sample", id: 4 }, "unknown");
-    recordErrorRate(db, dir, run);
+    recordErrorRate(db, run);
     fixName(db, { set: "sample", id: 5 }, "Інше");
-    expect(recordErrorRate(db, dir, run)).toMatchObject({ errors: 5, percent: 25 });
-    expect(recordedErrorRate(db, dir, run)).toEqual({ size: 20, errors: 5, percent: 25 });
+    expect(recordErrorRate(db, run)).toMatchObject({ errors: 5, percent: 25 });
+    expect(recordedErrorRate(db, run)).toEqual({ size: 20, errors: 5, percent: 25 });
   });
 
   it("has no recorded rate before recording", () => {
     const { db, run } = twenty();
-    expect(recordedErrorRate(db, mkdtempSync(join(tmpdir(), "gortach-run-")), run)).toBeNull();
+    expect(recordedErrorRate(db, run)).toBeNull();
   });
 });
 
@@ -542,46 +528,41 @@ describe("several runs in one case", () => {
     expect(errorRate(db, second)).toEqual({ runId: second, size: 3, errors: 1, percent: 33.3 });
   });
 
-  it("records the rate of one run without touching the other run or its metafile", () => {
+  it("records the rate of one run without touching the other run", () => {
     const { db, first, second } = twoRuns();
-    const dir = mkdtempSync(join(tmpdir(), "gortach-run-"));
-    const firstFile = writeRunReport(db, first, dir);
-    const secondFile = writeRunReport(db, second, dir);
-    const firstBefore = readFileSync(firstFile, "utf8");
+    const firstBefore = runSummary(db, first);
     const ofSecond = listItems(db, "sample", second)[0];
     if (ofSecond === undefined) throw new Error("no place in the sample of the second run");
     fixName(db, { set: "sample", id: ofSecond.id }, "Нове");
 
-    expect(recordErrorRate(db, dir, second)).toMatchObject({ runId: second, errors: 1 });
+    expect(recordErrorRate(db, second)).toMatchObject({ runId: second, errors: 1 });
     expect(listItems(db, "sample", second, { status: "open" })).toHaveLength(0);
     expect(listItems(db, "sample", first, { status: "open" })).toHaveLength(4);
-    expect(readFileSync(firstFile, "utf8")).toBe(firstBefore);
-    expect(yamlOf(secondFile)).toMatchObject({ wer: 33.3, sample_errors: 1, sample_size: 3 });
-    expect(recordedErrorRate(db, dir, first)).toBeNull();
-    expect(recordedErrorRate(db, dir, second)).toEqual({ size: 3, errors: 1, percent: 33.3 });
+    expect(runSummary(db, first)).toEqual(firstBefore);
+    expect(recordedErrorRate(db, first)).toBeNull();
+    expect(recordedErrorRate(db, second)).toEqual({ size: 3, errors: 1, percent: 33.3 });
   });
 });
 
 describe("writeRunErrorRate", () => {
-  it("changes only the three fields of an existing metafile", () => {
+  it("changes only the rate of the run", () => {
     const { db, run } = fixture();
-    const dir = mkdtempSync(join(tmpdir(), "gortach-run-"));
-    const path = writeRunReport(db, run, dir);
-    const before = yamlOf(path);
-    writeRunErrorRate(db, run, dir, { size: 20, errors: 3, percent: 15 });
-    const after = yamlOf(path);
-    expect(after).toEqual({ ...before, wer: 15, sample_errors: 3, sample_size: 20 });
-    expect(before.wer).toBeNull();
+    const before = runSummary(db, run);
+    expect(before.errorRate).toBeNull();
+    writeRunErrorRate(db, run, { size: 20, errors: 3, percent: 15 });
+    expect(runSummary(db, run)).toEqual({
+      ...before,
+      errorRate: { size: 20, errors: 3, percent: 15 },
+    });
   });
 
-  it("creates the metafile when there is none", () => {
+  it("refuses an unknown run and a rate over 100", () => {
     const { db, run } = fixture();
-    const dir = mkdtempSync(join(tmpdir(), "gortach-run-"));
-    const path = writeRunErrorRate(db, run, dir, { size: 4, errors: 1, percent: 25 });
-    expect(parse(readFileSync(path, "utf8"))).toMatchObject({
-      model: "test-model",
-      wer: 25,
-      doubts: 6,
-    });
+    expect(() => {
+      writeRunErrorRate(db, 99, { size: 4, errors: 1, percent: 25 });
+    }).toThrow(/unknown run/);
+    expect(() => {
+      writeRunErrorRate(db, run, { size: 4, errors: 1, percent: 125 });
+    }).toThrow();
   });
 });

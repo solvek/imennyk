@@ -1,14 +1,10 @@
-import { mkdtempSync, readFileSync } from "node:fs";
 import type { DatabaseSync } from "node:sqlite";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { parse } from "yaml";
 import { z } from "zod";
 import { SAMPLE_SIZE } from "../../src/indexing/constants.ts";
 import { openCaseDb, selectRows } from "../../src/indexing/db.ts";
 import { ingestReading } from "../../src/indexing/ingest.ts";
-import { runFileName, startRun, writeRunReport } from "../../src/indexing/run.ts";
+import { runSummary, startRun } from "../../src/indexing/run.ts";
 import { buildSample, sampleMentions } from "../../src/indexing/sample.ts";
 
 function caseWithSurnames(count: number): { db: DatabaseSync; run: number } {
@@ -163,20 +159,19 @@ describe("sample", () => {
   });
 });
 
-describe("run report", () => {
-  it("writes counters and an empty WER", () => {
+describe("run summary", () => {
+  it("counts scans and doubts and has no error rate yet", () => {
     const { db, run } = caseWithSurnames(5);
-    const dir = mkdtempSync(join(tmpdir(), "indexing-run-"));
-    const path = writeRunReport(db, run, dir);
-    expect(path.endsWith(runFileName("2026-10-22T10:00:00Z"))).toBe(true);
-    expect(runFileName("2026-10-22T10:00:00Z")).toBe("run-2026-10-22T10-00-00Z.yaml");
-    const report: unknown = parse(readFileSync(path, "utf8"));
-    expect(report).toMatchObject({
+    expect(runSummary(db, run)).toEqual({
       model: "test-model",
       session: "s1",
-      scans_processed: 1,
+      effort: null,
+      procedureSha: null,
+      startedAt: "2026-10-22T10:00:00Z",
+      note: null,
+      scansProcessed: 1,
       doubts: 1,
-      wer: null,
+      errorRate: null,
     });
   });
 });

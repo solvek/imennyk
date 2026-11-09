@@ -1,16 +1,7 @@
-import {
-  existsSync,
-  mkdirSync,
-  readdirSync,
-  mkdtempSync,
-  readFileSync,
-  writeFileSync,
-} from "node:fs";
+import { existsSync, mkdirSync, readdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { z } from "zod";
-import { parse } from "yaml";
 import { openCaseDb } from "../../src/indexing/db.ts";
 import { ingestReading } from "../../src/indexing/ingest.ts";
 import { startRun } from "../../src/indexing/run.ts";
@@ -370,11 +361,9 @@ describe("actions", () => {
     const html = await (await get(`/c/${CASE}/sample`)).text();
     expect(articleOf(html, 1)).toContain("tone-ok");
     expect(articleOf(html, 2)).toContain("tone-error");
-    const yamlFile = join(root, CASE, "run-2026-10-22T10-00-00Z.yaml");
-    const yaml = z
-      .object({ wer: z.number(), sample_errors: z.number(), sample_size: z.number() })
-      .parse(parse(readFileSync(yamlFile, "utf8")));
-    expect(yaml).toEqual({ wer: 33.3, sample_errors: 1, sample_size: 3 });
+    expect(rows("select wer, sample_errors, sample_size from run")).toEqual([
+      { wer: 33.3, sample_errors: 1, sample_size: 3 },
+    ]);
     expect(html).toContain("записано: 33.3 % (1 з 3)");
   });
 
@@ -482,12 +471,9 @@ describe("several runs in one case", () => {
       { run_id: 1, status: "open", n: 2 },
       { run_id: 2, status: "confirmed", n: 2 },
     ]);
-    const second = join(root, RUNS_CASE, "run-2026-10-23T10-00-00Z.yaml");
-    expect(
-      z
-        .object({ wer: z.number(), sample_size: z.number() })
-        .parse(parse(readFileSync(second, "utf8"))),
-    ).toEqual({ wer: 0, sample_size: 2 });
-    expect(existsSync(join(root, RUNS_CASE, "run-2026-10-22T10-00-00Z.yaml"))).toBe(false);
+    expect(rows("select id, wer, sample_size from run order by id", RUNS_CASE)).toEqual([
+      { id: 1, wer: null, sample_size: null },
+      { id: 2, wer: 0, sample_size: 2 },
+    ]);
   });
 });

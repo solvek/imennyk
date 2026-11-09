@@ -354,30 +354,25 @@ export function errorRate(db: DatabaseSync, runId: number): ErrorRate {
 
 /**
  * Makes every open place of the sample of run `runId` «correct», counts the rate and writes it
- * into the metafile of the run in `dir`. The states are saved before the file is written, so a
- * failed write is repeated by pressing the button again. Other runs are not touched.
+ * into the run in the bank, all in one transaction. Other runs are not touched.
  */
-export function recordErrorRate(db: DatabaseSync, dir: string, runId: number): ErrorRate {
-  const rate = inTransaction(db, () => {
+export function recordErrorRate(db: DatabaseSync, runId: number): ErrorRate {
+  return inTransaction(db, () => {
     for (const item of listItems(db, "sample", runId, { status: "open" })) {
       writeStatus(db, { set: "sample", id: item.id }, "confirmed", null);
     }
-    return errorRate(db, runId);
+    const rate = errorRate(db, runId);
+    writeRunErrorRate(db, rate.runId, rate);
+    return rate;
   });
-  writeRunErrorRate(db, rate.runId, dir, rate);
-  return rate;
 }
 
-/** The rate last written into the metafile of run `runId`, if its sample is built and there is one. */
-export function recordedErrorRate(
-  db: DatabaseSync,
-  dir: string,
-  runId: number,
-): RunErrorRate | null {
+/** The rate last written for run `runId`, if its sample is built and there is one. */
+export function recordedErrorRate(db: DatabaseSync, runId: number): RunErrorRate | null {
   try {
     errorRate(db, runId);
   } catch {
     return null;
   }
-  return readRunErrorRate(db, runId, dir);
+  return readRunErrorRate(db, runId);
 }
