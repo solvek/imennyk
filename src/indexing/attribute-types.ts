@@ -134,6 +134,12 @@ export const ATTRIBUTE_TYPES = [
     label: { uk: "Зовнішній ідентифікатор", en: "External ID" },
     format: "text",
   },
+  {
+    id: 21,
+    code: "origin",
+    label: { uk: "Звідки взято", en: "Origin" },
+    format: "markdown",
+  },
 ] as const satisfies readonly AttributeTypeDef[];
 
 export type AttributeCode = (typeof ATTRIBUTE_TYPES)[number]["code"];
