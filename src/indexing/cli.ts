@@ -9,6 +9,7 @@ import { dumpCaseDb } from "./dump.ts";
 import { caseHints, formatHints, parseNameKind } from "./hints.ts";
 import { openCaseDb, selectRows } from "./db.ts";
 import { compactToReading } from "./compact.ts";
+import { fillHouseholds } from "./households.ts";
 import { ingestReading } from "./ingest.ts";
 import { mergeBanks } from "./merge.ts";
 import { runSummary, startRun } from "./run.ts";
@@ -23,6 +24,7 @@ const USAGE = `usage: pnpm indexing <command> <case dir> [options]
   sample <run id>                     build (once per run) and print the sample of its surname places
   hints [--kind given|patronymic|surname]   print the dictionary and the names already read in this case
   run-report <run id>                 print what the bank says about the run (counts, error rate)
+  households                          give a household to persons of an old bank that has none (the loading into a database needs it)
   compact <run id> <file>             read a scan from the compact notation (docs/document-types/confession.md) and ingest it
   merge <source case dir>             add the bank of another case dir to this one (scans must differ)
   dump <file.sqlite>                  text dump for git diff (the first argument is the file)`;
@@ -146,6 +148,9 @@ function main(argv: string[]): void {
       process.stdout.write(formatHints(caseHints(db, kind === undefined ? {} : { kind })));
       return;
     }
+    case "households":
+      console.log(`${String(fillHouseholds(db))} persons got a household`);
+      return;
     case "run-report":
       process.stdout.write(stringify(runSummary(db, Number(requireArg(arg, "run id")))));
       return;
