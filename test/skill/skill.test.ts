@@ -111,7 +111,6 @@ describe("skill folder", () => {
     expect(files.filter((path) => /\.(sqlite|jpe?g|png|tiff?)$/i.test(path))).toEqual([]);
     expect(files.filter((path) => path.startsWith("references/dictionaries/"))).toEqual([
       "references/dictionaries/README.md",
-      "references/dictionaries/patronymics.tsv",
       "references/dictionaries/words-registers.tsv",
     ]);
   });

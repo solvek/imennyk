@@ -26,7 +26,7 @@ license: Apache-2.0
 | переглянути банку, виміряти помилки | [references/review.md](references/review.md) |
 | скачати скани з FamilySearch | [references/familysearch-scans.md](references/familysearch-scans.md) |
 | дерево FamilySearch у банку | [references/familysearch-tree.md](references/familysearch-tree.md) |
-| скорочення метрик, по батькові | [references/dictionaries/](references/dictionaries/README.md) |
+| скорочення метрик | [references/dictionaries/](references/dictionaries/README.md) |
 
 ## Перед першим прогоном: хто індексує
 Кожен прогін записує автора індексування — того, хто запускає Іменник. Він налаштований локально, один раз на людину (`~/.config/imennyk/operator.yaml`, або `$XDG_CONFIG_HOME/imennyk/`, або файл з `$IMENNYK_OPERATOR`).
