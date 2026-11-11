@@ -7,7 +7,7 @@ import {
   PLACE_TYPES,
   TIE_TYPES,
   external_exports
-} from "./chunk-A32FA3X5.mjs";
+} from "./chunk-IPSGNSK4.mjs";
 
 // src/indexing/attribute-types.ts
 var ATTRIBUTE_TYPES = [

@@ -26,6 +26,7 @@ export const TIE_TYPES = [
   "friend",
   "witness",
   "officiant",
+  "midwife",
   "informant",
   "mentioned",
   "kin",

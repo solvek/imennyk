@@ -19911,6 +19911,7 @@ var TIE_TYPES = [
   "friend",
   "witness",
   "officiant",
+  "midwife",
   "informant",
   "mentioned",
   "kin",
