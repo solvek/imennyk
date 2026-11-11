@@ -1,0 +1,10 @@
+{
+  "name": "imennyk",
+  "version": "0.1.0",
+  "description": "Index people in archival documents: scans in, a bank (a local SQLite database of persons, events and ties) out",
+  "author": { "name": "solvek" },
+  "homepage": "https://github.com/solvek/imennyk",
+  "repository": "https://github.com/solvek/imennyk",
+  "license": "Apache-2.0",
+  "keywords": ["genealogy", "archives", "indexing", "sqlite"]
+}

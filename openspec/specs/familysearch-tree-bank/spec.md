@@ -1,7 +1,7 @@
 # familysearch-tree-bank Specification
 
 ## Purpose
-Предки з дерева FamilySearch у банці справи: обхід у залогіненому браузері, правило «з дерева — лише померлі», очищені картки на диску й прогін банки на кожне дерево. Інструмент — `pnpm familysearch:tree fetch|ingest`, опис — `docs/familysearch-tree.md`; заливку в криницю робить Grapa.
+Предки з дерева FamilySearch у банці справи: обхід у залогіненому браузері, правило «з дерева — лише померлі», очищені картки на диску й прогін банки на кожне дерево. Інструмент — `familysearch-tree.mjs fetch|ingest` скіла (`pnpm familysearch:tree` у розробці), опис — `skills/imennyk/references/familysearch-tree.md`; заливку в криницю робить Grapa.
 
 ## Requirements
 

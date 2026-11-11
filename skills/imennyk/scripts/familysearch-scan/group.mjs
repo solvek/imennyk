@@ -1,7 +1,7 @@
 // Helper for a FamilySearch image group (like scan.mjs, but for many images of one group), through the Chrome on the host (CDP, port 9222).
-//   node import/familysearch-dgs/group.mjs apids <first-image-url> <count> <out.json>
+//   node scripts/familysearch-scan/group.mjs apids <first-image-url> <count> <out.json>
 //       walks the viewer with ArrowRight and writes {image number: deep-zoom id (apid)} for every image of the group, and {image number: ark} next to it as <out>-arks.json;
-//   node import/familysearch-dgs/group.mjs tiles <apids.json> <level|top|-N> <outdir> <1,5-9,…>
+//   node scripts/familysearch-scan/group.mjs tiles <apids.json> <level|top|-N> <outdir> <1,5-9,…>
 //       downloads the listed images as <outdir>/<n>.jpg; level: absolute, «top» (full size) or N levels below the top (-3 = a small preview).
 // The tiles are loaded as <img> inside the logged-in browser and read through CDP Network.getResponseBody; cookies never leave the browser.
 // Used for DAVoO 35/9/532 (Novosilky), see import/novosilky-532.md; the apid file of that group is import/novosilky-532/apids.json.

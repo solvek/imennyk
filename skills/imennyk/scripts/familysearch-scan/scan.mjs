@@ -1,4 +1,4 @@
-// usage: node import/familysearch-dgs/scan.mjs <ark-view-url> <out.jpg>
+// usage: node scripts/familysearch-scan/scan.mjs <ark-view-url> <out.jpg>
 // Opens the FamilySearch viewer in a new tab, finds the deep-zoom image id, loads every tile of the top level
 // inside the browser (img elements) and reads the tile bytes through CDP Network.getResponseBody, then stitches with ImageMagick.
 import fs from 'node:fs'; import { execFileSync } from 'node:child_process'; import os from 'node:os'; import path from 'node:path';

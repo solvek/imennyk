@@ -1,6 +1,6 @@
 // A compact text notation for reading a confession list: one line per person, turned into the
 // JSON of `reading.ts`. The agent writes less, and boxes, serial numbers, household numbers and
-// ties follow the rules of docs/document-types/confession.md instead of being typed per person.
+// ties follow the rules of skills/imennyk/references/document-types/confession.md instead of being typed per person.
 //
 // Lines (blank lines and «#» comments are ignored):
 //   scan 435                      the scan name (required, first)

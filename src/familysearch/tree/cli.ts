@@ -7,6 +7,7 @@ import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { parseArgs } from "node:util";
 import { z } from "zod";
+import { requireOperator } from "../../credits/local.ts";
 import { openCaseDb, selectRows } from "../../indexing/db.ts";
 import { startRun } from "../../indexing/run.ts";
 import { withFamilySearch } from "./browser.ts";
@@ -60,6 +61,7 @@ switch (command) {
   }
   case "ingest": {
     if (values.model === undefined) throw new Error("--model is required");
+    const operator = requireOperator();
     const db = openCaseDb(join(caseDir, "case.sqlite"));
     db.prepare(
       "insert or ignore into meta (key, value) values ('kind', 'familysearch-tree')",
@@ -83,7 +85,12 @@ switch (command) {
         console.log(`${file}: already read`);
         continue;
       }
-      const run = startRun(db, { startedAt: new Date().toISOString(), model: values.model, note });
+      const run = startRun(db, {
+        startedAt: new Date().toISOString(),
+        model: values.model,
+        operator,
+        note,
+      });
       console.log(`${file}: run ${String(run)} ${JSON.stringify(ingestTree(db, run, bundle))}`);
     }
     break;

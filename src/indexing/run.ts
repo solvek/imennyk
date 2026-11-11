@@ -13,13 +13,15 @@ export interface RunInfo {
   /** Git sha of the reading procedure, to compare runs fairly. */
   readonly procedureSha?: string;
   readonly note?: string;
+  /** Credit line of the person who runs the indexing (`operator.yaml`). */
+  readonly operator?: string;
 }
 
 /** Creates a run and returns its id. */
 export function startRun(db: DatabaseSync, info: RunInfo): number {
   const { lastInsertRowid } = db
     .prepare(
-      "insert into run (started_at, model, session, effort, procedure_sha, note) values (?, ?, ?, ?, ?, ?)",
+      "insert into run (started_at, model, session, effort, procedure_sha, note, operator) values (?, ?, ?, ?, ?, ?, ?)",
     )
     .run(
       info.startedAt,
@@ -28,6 +30,7 @@ export function startRun(db: DatabaseSync, info: RunInfo): number {
       info.effort ?? null,
       info.procedureSha ?? null,
       info.note ?? null,
+      info.operator ?? null,
     );
   return Number(lastInsertRowid);
 }
@@ -39,6 +42,7 @@ const runRow = z.object({
   effort: z.string().nullable(),
   procedure_sha: z.string().nullable(),
   note: z.string().nullable(),
+  operator: z.string().nullable(),
   sample_size: z.number().nullable(),
   sample_errors: z.number().nullable(),
   wer: z.number().nullable(),
@@ -60,6 +64,8 @@ export interface RunSummary {
   readonly procedureSha: string | null;
   readonly startedAt: string;
   readonly note: string | null;
+  /** Who ran it; null for runs made before the operator was recorded. */
+  readonly operator: string | null;
   /** Scans the run wrote anything on. */
   readonly scansProcessed: number;
   readonly doubts: number;
@@ -100,6 +106,7 @@ export function runSummary(db: DatabaseSync, runId: number): RunSummary {
     procedureSha: run.procedure_sha,
     startedAt: run.started_at,
     note: run.note,
+    operator: run.operator,
     scansProcessed: scans ?? 0,
     doubts: doubts ?? 0,
     errorRate: errorRateOf(run),

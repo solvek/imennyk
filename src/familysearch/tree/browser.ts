@@ -1,5 +1,5 @@
 // A TreeFetcher that asks FamilySearch from inside the logged-in Chrome of the host
-// (docs/familysearch-browser.md). The session never leaves the browser: no
+// (skills/imennyk/references/familysearch-scans.md). The session never leaves the browser: no
 // cookie or token is read; a tab on familysearch.org calls the same `/service/…` addresses the
 // site itself calls, and only the JSON replies come back.
 import { z } from "zod";

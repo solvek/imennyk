@@ -1,10 +1,10 @@
 # Дерева FamilySearch у банку
-Як банкуємо родоводи з FamilySearch Family Tree: предків однієї особи (корінь), яких бачить залогінений користувач. Це не індексування сканів, але шлях той самий: завантажити → банка справи (локальна sqlite) → заливка в криницю (у Grapa). Структура sqlite та сама, що в індексуванні ([scan-extraction.md](scan-extraction.md)), тож результат так само можна оглянути, а внесення так само відтворюване.
+Як банкуємо родоводи з FamilySearch Family Tree: предків однієї особи (корінь), яких бачить залогінений користувач. Це не індексування сканів, але шлях той самий: завантажити → банка справи (локальна sqlite) → заливка в криницю (у Grapa). Структура sqlite та сама, що в індексуванні ([workflow.md](workflow.md)), тож результат так само можна оглянути, а внесення так само відтворюване.
 
-Інструмент — `pnpm familysearch:tree` (`fetch`, `ingest`), код у `src/familysearch/tree/`. Заливку (`enter`, `places`) робить Grapa: [bank-entry.md, «Дерева FamilySearch»](https://github.com/solvek/grapa/blob/main/docs/genealogy/indexing/bank-entry.md#дерева-familysearch) у Grapa; журнал імпортів власника — [import/familysearch-trees.md](https://github.com/solvek/grapa/blob/main/import/familysearch-trees.md).
+Інструмент — `node <скіл>/scripts/familysearch-tree.mjs` (`fetch`, `ingest`). Заливку (`enter`, `places`) робить Grapa: [bank-entry.md, «Дерева FamilySearch»](https://github.com/solvek/grapa/blob/main/docs/genealogy/indexing/bank-entry.md#дерева-familysearch) у Grapa; журнал імпортів власника — [import/familysearch-trees.md](https://github.com/solvek/grapa/blob/main/import/familysearch-trees.md).
 
 ## Правило про живих: для всіх дерев
-**З жодного дерева не вносимо живих людей.** Це стосується всіх родоводів: FamilySearch, GEDCOM, Gramps, таблиць. Правило одне, воно в коді: `src/living.ts` (`livingState`, `LIVING_HORIZON_YEARS = 110`), і кожен імпорт дерев користується ним.
+**З жодного дерева не вносимо живих людей.** Це стосується всіх родоводів: FamilySearch, GEDCOM, Gramps, таблиць. Правило одне, воно в коді інструменту (горизонт — 110 років), і кожен імпорт дерев користується ним.
 
 Людина внесена, лише якщо відомо, що вона померла. Порядок перевірки:
 1. Джерело саме позначило її живою (`living` у FamilySearch, `_LIVING` / приватність в інших) — жива.
@@ -17,7 +17,7 @@
 Імпорт таблиць (`import:tree-sheet`) рахує ту саму межу: подія не пізніше `поточний рік − 110` або відома смерть. Прапорець `--cutoff` задає її вручну.
 
 ## Звідки беремо
-Дані віддає сам FamilySearch залогіненому браузеру. Агент не бере ні куків, ні токенів: у вкладці Chrome на хості ([familysearch-browser.md](familysearch-browser.md)) виконується `fetch` тих самих адрес `/service/tree/…`, що й сайт, а назад іде тільки JSON. Адреси не публічні й можуть змінитися; без токена `/platform/…` дає 401, тож ними не користуємось.
+Дані віддає сам FamilySearch залогіненому браузеру. Агент не бере ні куків, ні токенів: у вкладці Chrome на хості ([familysearch-scans.md](familysearch-scans.md)) виконується `fetch` тих самих адрес `/service/tree/…`, що й сайт, а назад іде тільки JSON. Адреси не публічні й можуть змінитися; без токена `/platform/…` дає 401, тож ними не користуємось.
 
 | Що | Адреса (відносно `https://www.familysearch.org`) |
 |---|---|
@@ -34,8 +34,8 @@
 
 ## Етапи
 ```bash
-pnpm familysearch:tree fetch <справи>/FamilySearch-tree --root GG22-75Z --root GG22-SQH
-pnpm familysearch:tree ingest <справи>/FamilySearch-tree --model <модель>
+node <скіл>/scripts/familysearch-tree.mjs fetch <справи>/FamilySearch-tree --root GG22-75Z --root GG22-SQH
+node <скіл>/scripts/familysearch-tree.mjs ingest <справи>/FamilySearch-tree --model <модель>   # потрібен автор: indexing.mjs operator
 ```
 1. **fetch** — обхід предків кожного кореня, фільтр живих, очищені картки у `raw/tree-<корінь>.json`. Друкує, скільки осіб, скільки відсіяно як живих і як невідомих. `--allow <id>` дозволяє невідому особу.
 2. **ingest** — кожен `raw/tree-*.json`, ще не прочитаний, стає прогоном (`run`) у `case.sqlite`. Особа, яка вже є в справі (з іншого дерева), вдруге не пишеться.
@@ -44,12 +44,12 @@ pnpm familysearch:tree ingest <справи>/FamilySearch-tree --model <моде
 Як в індексуванні: проміжна база — `case.sqlite` справи, ідентифікатори локальні, `ddb_map` зв'язує їх з криницею після внесення.
 
 ## Папка справи
-Одна справа — всі дерева FamilySearch: `<справи>/FamilySearch-tree/` (нове дерево — нове читання в тій самій папці, як нова парафія в справі). Імена людей з родоводів у git не йдуть (`.gitignore`): комітиться лише `places.json` (зіставлення місць без персональних даних) і журнал `import/familysearch-trees.md`.
+Одна справа — всі дерева FamilySearch: `<справи>/FamilySearch-tree/` (нове дерево — нове читання в тій самій папці, як нова парафія в справі). Імена людей з родоводів у git не йдуть (`.gitignore`): комітиться лише `places.json` (зіставлення місць без персональних даних) і журнал імпортів.
 
 | Файл | Що |
 |---|---|
 | `raw/tree-<id>.json` | очищені картки дерева (`treeBundleSchema`); локально |
-| `case.sqlite` | локальна база, схема індексування (міграції `src/indexing/migrations/`); локально |
+| `case.sqlite` | локальна база, схема індексування (міграції `scripts/migrations/` скіла); локально |
 | `places.json` | `{"<id місця FamilySearch>": <id місця в криниці>}`; у git |
 
 ## Що куди лягає в sqlite
@@ -89,7 +89,7 @@ pnpm familysearch:tree ingest <справи>/FamilySearch-tree --model <моде
 4. Дитина не народжується після смерті батьків (`data-entry.md`, розділ 6).
 
 ## Підводні камені
-- **Сесія злетіла**: `fetch` одразу падає з поясненням (401/403). Увійти знову через noVNC ([familysearch-browser.md](familysearch-browser.md)).
+- **Сесія злетіла**: `fetch` одразу падає з поясненням (401/403). Увійти знову через noVNC ([familysearch-scans.md](familysearch-scans.md)).
 - Корінь і подружжя: `ancestors[0]` — не батьки. Обхід це враховує; перевіряти не треба, лише знати, читаючи сирий JSON.
 - FamilySearch називає місце то кирилицею, то латиницею, то спотворено («Жукув, миąкзин»): такі назви лишаються як є, зіставлення з криницею — вручну.
 - Прапорець `living` у FamilySearch може бути хибно `false` для щойно померлої людини без дати смерті; тому рахуємо ще й смерть і рік народження.

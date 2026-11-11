@@ -1,5 +1,6 @@
 # Who runs Imennyk. This goes into the credits of what the run produces.
-# Copy this file to `operator.yaml` and put your own data in it.
+# The agent writes this file with `indexing operator --set "<credit>"` after asking you;
+# it lives in ~/.config/imennyk/operator.yaml (or $XDG_CONFIG_HOME, or $IMENNYK_OPERATOR).
 #
 # credit: one line of Markdown, as it should appear in the credits:
 #   a name, a link, or a mailto: link.

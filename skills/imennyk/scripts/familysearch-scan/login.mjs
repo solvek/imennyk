@@ -1,13 +1,13 @@
 // Signs the Chrome on the host in to FamilySearch with the account from the environment.
-//   node tools/familysearch-scan/login.mjs [path of the .env, default /root/Projects/grapa/.env]
-// Reads FAMILY_SEARCH_USER and FAMILY_SEARCH_PASSWORD (set in the .env of the grapa checkout), types them into the
+//   node scripts/familysearch-scan/login.mjs [path of the .env, default .env of the current folder]
+// Reads FAMILY_SEARCH_USER and FAMILY_SEARCH_PASSWORD (from the environment or the .env), types them into the
 // login form through CDP (port 9222) and waits for the redirect. Nothing is printed or written to disk.
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 // The password may hold «#» and «$», which `node --env-file` cuts or expands, so the line is read raw.
 import fs from 'node:fs';
-const envFile = process.argv[2] ?? '/root/Projects/grapa/.env';
+const envFile = process.argv[2] ?? '.env';
 const raw = Object.fromEntries(
-  fs.readFileSync(envFile, 'utf8').split('\n').filter((l) => /^[A-Z_]+=/.test(l)).map((l) => [l.slice(0, l.indexOf('=')), l.slice(l.indexOf('=') + 1)]),
+  (fs.existsSync(envFile) ? fs.readFileSync(envFile, 'utf8') : '').split('\n').filter((l) => /^[A-Z_]+=/.test(l)).map((l) => [l.slice(0, l.indexOf('=')), l.slice(l.indexOf('=') + 1)]),
 );
 const user = process.env.FAMILY_SEARCH_USER ?? raw.FAMILY_SEARCH_USER;
 const password = raw.FAMILY_SEARCH_PASSWORD ?? process.env.FAMILY_SEARCH_PASSWORD;

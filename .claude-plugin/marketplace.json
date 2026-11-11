@@ -1,0 +1,11 @@
+{
+  "name": "imennyk",
+  "owner": { "name": "solvek" },
+  "plugins": [
+    {
+      "name": "imennyk",
+      "source": "./",
+      "description": "Index people in archival documents: scans in, a bank (a local SQLite database of persons, events and ties) out"
+    }
+  ]
+}

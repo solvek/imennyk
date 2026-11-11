@@ -1,6 +1,6 @@
 // Cuts the two pages of a confession spread into overlapping horizontal strips, with a ruler of scan
 // pixels (a tick every 50 px, a label every 100) on the left edge, so the reader can say where a row is.
-//   node tools/scan-crops/crops.mjs <scan.jpg> <outdir> [name]
+//   node scripts/scan-crops/crops.mjs <scan.jpg> <outdir> [name]
 // Writes <outdir>/<name>L1.jpg, L2, L3, R1, R2, R3 (strips of the left and the right page).
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';

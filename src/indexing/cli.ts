@@ -5,6 +5,12 @@ import { readFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import { parseArgs } from "node:util";
 import { z } from "zod";
+import {
+  readOperator,
+  requireOperator,
+  writeOperator,
+  localOperatorPath,
+} from "../credits/local.ts";
 import { dumpCaseDb } from "./dump.ts";
 import { caseHints, formatHints, parseNameKind } from "./hints.ts";
 import { openCaseDb, selectRows } from "./db.ts";
@@ -16,7 +22,9 @@ import { runSummary, startRun } from "./run.ts";
 import { buildSample } from "./sample.ts";
 import { addScans } from "./scans.ts";
 
-const USAGE = `usage: pnpm indexing <command> <case dir> [options]
+const USAGE = `usage: indexing <command> <case dir> [options]
+  operator [--set CREDIT]             print who runs the indexing, or set it (no case dir): one line of
+                                      Markdown, e.g. "[Name](mailto:name@example.org)"; run-start needs it
   init                                create the case database
   scans <scans.json>                  add scans: [{name, url, width, height, md5?}]
   run-start --model M [--session S] [--effort E] [--sha SHA] [--note N]   print the run id
@@ -25,7 +33,7 @@ const USAGE = `usage: pnpm indexing <command> <case dir> [options]
   hints [--kind given|patronymic|surname]   print the dictionary and the names already read in this case
   run-report <run id>                 print what the bank says about the run (counts, error rate)
   households                          give a household to persons of an old bank that has none (the loading into a database needs it)
-  compact <run id> <file>             read a scan from the compact notation (docs/document-types/confession.md) and ingest it
+  compact <run id> <file>             read a scan from the compact notation (references/document-types/confession.md) and ingest it
   merge <source case dir>             add the bank of another case dir to this one (scans must differ)
   dump <file.sqlite>                  text dump for git diff (the first argument is the file)`;
 
@@ -35,12 +43,15 @@ function readJson(path: string): unknown {
 
 function procedureSha(): string | undefined {
   try {
-    return execFileSync(
+    // The procedure is in this repository, whatever folder the tool runs in: src/indexing/ or the
+    // built skills/imennyk/scripts/. `:/` makes the path relative to the top of the repository.
+    // Outside git (a copy of the skill made by an installer) there is no version.
+    const sha = execFileSync(
       "git",
-      ["log", "-1", "--format=%H", "--", "docs/scan-extraction.md"],
-      // The procedure is in this repository, whatever folder the tool runs in.
-      { encoding: "utf8", cwd: join(import.meta.dirname, "../..") },
+      ["log", "-1", "--format=%H", "--", ":/skills/imennyk/references/workflow.md"],
+      { encoding: "utf8", cwd: import.meta.dirname, stdio: ["ignore", "pipe", "ignore"] },
     ).trim();
+    return sha === "" ? undefined : sha;
   } catch {
     return undefined;
   }
@@ -57,9 +68,24 @@ function main(argv: string[]): void {
       sha: { type: "string" },
       note: { type: "string" },
       kind: { type: "string" },
+      set: { type: "string" },
     },
   });
   const [command, caseDir, arg] = positionals;
+  if (command === "operator") {
+    if (values.set !== undefined) {
+      console.log(`operator written to ${writeOperator(values.set)}`);
+      return;
+    }
+    const credit = readOperator();
+    if (credit === undefined) {
+      console.log(`not set up: ${localOperatorPath()}`);
+      process.exitCode = 3;
+      return;
+    }
+    console.log(credit);
+    return;
+  }
   if (command === undefined || caseDir === undefined) {
     console.log(USAGE);
     process.exitCode = 1;
@@ -81,10 +107,12 @@ function main(argv: string[]): void {
       return;
     case "run-start": {
       if (values.model === undefined) throw new Error("--model is required");
+      const operator = requireOperator();
       const sha = values.sha ?? procedureSha();
       const id = startRun(db, {
         startedAt: new Date().toISOString(),
         model: values.model,
+        operator,
         ...(values.session === undefined ? {} : { session: values.session }),
         ...(values.effort === undefined ? {} : { effort: values.effort }),
         ...(sha === undefined ? {} : { procedureSha: sha }),

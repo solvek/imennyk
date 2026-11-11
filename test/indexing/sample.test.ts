@@ -169,6 +169,7 @@ describe("run summary", () => {
       procedureSha: null,
       startedAt: "2026-10-22T10:00:00Z",
       note: null,
+      operator: null,
       scansProcessed: 1,
       doubts: 1,
       errorRate: null,

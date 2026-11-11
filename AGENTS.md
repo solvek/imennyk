@@ -7,7 +7,8 @@ The human owner does not review code. **Types, linters and tests are the reviewe
 ## Project
 Imennyk (Ukrainian «Іменник») is the open-source repository that prepares data for loading into the well (криниця, the database of Grapa), above all by indexing people in archival documents: an agent or a person reads the scans of a case, and the result is a **bank** — a local SQLite database of persons, events, ties, places and doubts, ready to be loaded into a genealogy database. It is open source (Apache 2.0). Read before working:
 - `docs/overview.md` — goals, boundaries, stages
-- `docs/document-types/` — one file per document type (confession lists, metric books): page layout, columns, event and ties, pitfalls; read before indexing a new type
+- `docs/skill.md` — how the skill is laid out, built and installed
+- `skills/imennyk/` — the skill itself: `SKILL.md` and `references/` (the reading procedure, `document-types/` with one file per document type); read before indexing a new type
 - `openspec/specs/` — behaviour the tool guarantees
 
 Imennyk was split out of [Grapa](https://github.com/solvek/grapa), a genealogical research platform; Grapa loads banks into its database (the well) and stays a separate project. Imennyk knows nothing about Grapa's database: it does not import its code, its schema or its connection. Loading a bank into a database is the job of that database's own tools.
@@ -26,10 +27,15 @@ Glossary (as in Grapa):
 - **A library module, not a script.** Logic lives in `src/…`: functions take typed input and return typed results; no `process.argv`, `console` or file paths inside the logic.
 - **A thin CLI on top** (`src/<tool>/cli.ts`, run by a `pnpm` script) only parses arguments, reads files and prints. The MCP server and the web app call the same functions.
 - **The core does not depend on local programs or paths** (ImageMagick, Chrome, fixed folders): storage of scans and banks and the AI model are passed in from outside, so that a hosted web version can run the same core later.
-- **The bank schema is numbered SQL migrations** in `src/indexing/migrations/` (once the code is moved); data rules live in the schema (CHECK, foreign keys) as far as SQLite allows.
+- **The bank schema is numbered SQL migrations** in `src/indexing/migrations/`; data rules live in the schema (CHECK, foreign keys) as far as SQLite allows.
 - **Source-specific choices are input, not code.** Decisions about one particular source go into an options object or a file passed to the tool.
 - **People from family trees:** no living person is ever written into a bank from a family tree (FamilySearch, GEDCOM, …); a person whose state is unknown is left out and named in the report. People named in archival documents may all be written.
 - **No personal data in the repository.** Tests, examples and demos use fictional people and fictional scans. Banks and scans of real cases are kept outside the repository.
+
+## The skill
+- `skills/imennyk/` holds only what the skill needs at work: `SKILL.md`, `references/` (docs for the agent), `scripts/`, `assets/`. Everything for development stays outside it (`docs/`, `src/`, `test/`, `openspec/`).
+- `skills/imennyk/scripts/*.mjs` and `scripts/migrations/` are built from `src/`: never edit them by hand; run `pnpm build:skill` after every change in `src/` and commit the result with it (a test fails when they differ).
+- Links in the skill stay inside `skills/imennyk/`; commands there are `node <скіл>/scripts/…`, not `pnpm`.
 
 ## Specs and changes (OpenSpec)
 Behaviour the tool guarantees is described in `openspec/specs/`; every non-trivial change goes through OpenSpec (`openspec/config.yaml` has the project rules).
