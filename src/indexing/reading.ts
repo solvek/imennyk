@@ -1,7 +1,15 @@
 // The JSON an agent writes for one scan. It is the only way data get into the case database.
 import { z } from "zod";
 import { attributeTypeByCode } from "./attribute-types.ts";
-import { BOX_ORIGINS, DOUBT_ELEMENTS, GENDERS, PLACE_TYPES, TIE_TYPES } from "./enums.ts";
+import {
+  BOX_ORIGINS,
+  DATE_QUALS,
+  DOUBT_ELEMENTS,
+  EVENT_TYPES,
+  GENDERS,
+  PLACE_TYPES,
+  TIE_TYPES,
+} from "./enums.ts";
 
 const key = z.string().min(1);
 
@@ -82,6 +90,44 @@ const householdSchema = z.strictObject({
   ...provenance,
 });
 
+/** A member of a record: as a member of a household, with the place the person is from. */
+const eventMemberSchema = memberSchema.omit({ head: true }).extend({
+  /** The main person of the event: the groom of a marriage, the child of a birth, the dead of a death. */
+  main: z.boolean().default(false),
+  /** Where the person is from (a key of `places`): the village of the groom, not that of the bride. */
+  place: key.optional(),
+});
+
+/** `1882`, `1882-02` or `1882-02-05`: how much of the date the document gives. */
+const flexDate = z
+  .string()
+  .regex(/^\d{4}(-\d{2}(-\d{2})?)?$/, "a date is YYYY, YYYY-MM or YYYY-MM-DD");
+
+/**
+ * A record of a register: one event with its people, whatever the type of the document — a birth,
+ * a marriage, a death, a baptism. A confession household is not one: it is read as a household.
+ */
+const eventSchema = z.strictObject({
+  key,
+  type: z.enum(EVENT_TYPES).exclude(["confession"]),
+  /** The number of the record in the register. */
+  number: z.string().min(1).optional(),
+  /** When it happened; without it the event is dated by the year of the reading. */
+  date: flexDate.optional(),
+  date_qual: z.enum(DATE_QUALS).optional(),
+  /** The day of the act when it is another than the event (the baptism of a birth, the burial of a death). */
+  reg_date: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "a date of the act is YYYY-MM-DD")
+    .optional(),
+  /** Where the event took place (a key of `places`). */
+  place: key.optional(),
+  attributes: z.array(attributeSchema).default([]),
+  members: z.array(eventMemberSchema).min(1),
+  ties: z.array(tieSchema).default([]),
+  ...provenance,
+});
+
 const doubtSchema = z.strictObject({
   element: z.enum(DOUBT_ELEMENTS),
   person: key.optional(),
@@ -117,6 +163,8 @@ export const readingSchema = z.strictObject({
     )
     .default([]),
   households: z.array(householdSchema).default([]),
+  /** Records of a register (births, marriages, deaths …): events with a date, not households. */
+  events: z.array(eventSchema).default([]),
   doubts: z.array(doubtSchema).default([]),
   /** Words of this case only; a word already there is kept as it is. */
   dictionary: z

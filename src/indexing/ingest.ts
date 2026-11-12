@@ -45,6 +45,94 @@ interface Continued {
   readonly spouseId: number | undefined;
 }
 
+type Household = Reading["households"][number];
+type EventRecord = Reading["events"][number];
+type Member = Household["members"][number] | EventRecord["members"][number];
+
+/**
+ * A household and a record of a register are written alike: an event with a main person (the head
+ * of a household) and the people read in it. This is what both are turned into.
+ */
+interface Group {
+  readonly kind: "household" | "event";
+  readonly key: string;
+  readonly type: string;
+  readonly number: string | undefined;
+  readonly place: string | undefined;
+  readonly date: string | undefined;
+  readonly dateQual: string | undefined;
+  readonly regDate: string | undefined;
+  readonly attributes: Household["attributes"];
+  readonly members: readonly {
+    readonly member: Member;
+    readonly main: boolean;
+    readonly place: string | undefined;
+  }[];
+  readonly ties: Household["ties"];
+  readonly continues: Household["continues"];
+  readonly box: Household["box"];
+  readonly line: Household["line"];
+}
+
+function groupsOf(reading: Reading): Group[] {
+  const households = reading.households.map((household): Group => ({
+    kind: "household",
+    key: household.key,
+    type: "confession",
+    number: household.number,
+    place: household.place,
+    date: undefined,
+    dateQual: undefined,
+    regDate: undefined,
+    attributes: household.attributes,
+    members: household.members.map((member) => ({
+      member,
+      main: member.head,
+      place: undefined,
+    })),
+    ties: household.ties,
+    continues: household.continues,
+    box: household.box,
+    line: household.line,
+  }));
+  const events = reading.events.map((event): Group => ({
+    kind: "event",
+    key: event.key,
+    type: event.type,
+    number: event.number,
+    place: event.place,
+    date: event.date,
+    dateQual: event.date_qual,
+    regDate: event.reg_date,
+    attributes: event.attributes,
+    members: event.members.map((member) => ({ member, main: member.main, place: member.place })),
+    ties: event.ties,
+    continues: undefined,
+    box: event.box,
+    line: event.line,
+  }));
+  return [...households, ...events];
+}
+
+/** First and last day of a date given as `YYYY`, `YYYY-MM` or `YYYY-MM-DD`. */
+export function datesOf(date: string): { from: string; to: string } {
+  const [y = "", m, d] = date.split("-");
+  const year = Number(y);
+  const month = m === undefined ? undefined : Number(m);
+  const day = d === undefined ? undefined : Number(d);
+  const last = (mm: number): number => new Date(Date.UTC(year, mm, 0)).getUTCDate();
+  if (month !== undefined && (month < 1 || month > 12)) throw new Error(`not a date: «${date}»`);
+  if (month !== undefined && day !== undefined && (day < 1 || day > last(month))) {
+    throw new Error(`not a date: «${date}»`);
+  }
+  const two = (n: number): string => String(n).padStart(2, "0");
+  if (month === undefined) return { from: `${y}-01-01`, to: `${y}-12-31` };
+  if (day === undefined)
+    return { from: `${y}-${two(month)}-01`, to: `${y}-${two(month)}-${two(last(month))}` };
+  const full = `${y}-${two(month)}-${two(day)}`;
+  return { from: full, to: full };
+}
+
 /** The household (confession event) of an earlier reading of `scan` with this key. */
 function findHousehold(
   db: DatabaseSync,
@@ -190,31 +278,34 @@ function writeReading(db: DatabaseSync, runId: number, reading: Reading): Ingest
 
   const personIds = new Map<string, number>();
   const personBoxes = new Map<string, number | null>();
-  for (const household of reading.households) {
-    const heads = household.members.filter((member) => member.head);
+  const groups = groupsOf(reading);
+  for (const group of groups) {
+    const mains = group.members.filter((member) => member.main);
     const continued =
-      household.continues === undefined ? undefined : findHousehold(db, household.continues);
-    if (continued === undefined ? heads.length !== 1 : heads.length !== 0) {
+      group.continues === undefined ? undefined : findHousehold(db, group.continues);
+    if (continued === undefined ? mains.length !== 1 : mains.length !== 0) {
+      const what = group.kind === "household" ? "household" : "event";
+      const who = group.kind === "household" ? "head" : "main person";
       throw new Error(
         continued === undefined
-          ? `household «${household.key}» must have exactly one head, has ${String(heads.length)}`
-          : `household «${household.key}» continues another one and must have no head`,
+          ? `${what} «${group.key}» must have exactly one ${who}, has ${String(mains.length)}`
+          : `${what} «${group.key}» continues another one and must have no ${who}`,
       );
     }
-    const householdBox = boxId(household.box);
-    const householdLine = lineOf(household.line);
+    const groupBox = boxId(group.box);
+    const groupLine = lineOf(group.line);
+    const eventYear = group.date === undefined ? reading.year : Number(group.date.slice(0, 4));
     const memberIds = new Map<string, number>();
-    for (const member of household.members) {
+    for (const { member, place } of group.members) {
       if (personIds.has(member.key)) throw new Error(`duplicate person key «${member.key}»`);
-      const birth =
-        typeof member.age === "number" ? birthRange(reading.year, member.age) : undefined;
-      const memberBox = boxId(member.box) ?? householdBox;
-      const memberLine = lineOf(member.line) ?? householdLine;
+      const birth = typeof member.age === "number" ? birthRange(eventYear, member.age) : undefined;
+      const memberBox = boxId(member.box) ?? groupBox;
+      const memberLine = lineOf(member.line) ?? groupLine;
       const id = insert(
         db,
         `insert into person (run_id, scan_id, box_id, line_id, gender, given, patronymic, surname,
-                             age, birth_from, birth_to, birth_qual)
-         values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                             age, birth_from, birth_to, birth_qual, place_id)
+         values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           runId,
           scanId,
@@ -228,6 +319,7 @@ function writeReading(db: DatabaseSync, runId: number, reading: Reading): Ingest
           birth?.from ?? null,
           birth?.to ?? null,
           birth === undefined ? null : "calculated",
+          place === undefined ? null : lookup(placeIds, place, "place"),
         ],
       );
       addAttributes("person_id", id, member.attributes, memberBox);
@@ -250,28 +342,34 @@ function writeReading(db: DatabaseSync, runId: number, reading: Reading): Ingest
         counts.nameMentions += 1;
       }
     }
-    const head = heads[0];
+    const main = mains[0];
     let eventId: number;
     if (continued !== undefined) {
       eventId = continued.eventId;
     } else {
-      if (head === undefined) throw new Error("unreachable: household without head");
+      if (main === undefined) throw new Error("unreachable: an event without a main person");
+      const date = group.date === undefined ? undefined : datesOf(group.date);
       eventId = insert(
         db,
         `insert into event (run_id, scan_id, box_id, line_id, type, main_person_id, year, place_id,
-                            number, key, source_id)
-         values (?, ?, ?, ?, 'confession', ?, ?, ?, ?, ?, ?)`,
+                            number, key, source_id, date_from, date_to, date_qual, reg_date)
+         values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           runId,
           scanId,
-          householdBox,
-          householdLine,
-          lookup(memberIds, head.key, "person"),
-          reading.year,
-          household.place === undefined ? null : lookup(placeIds, household.place, "place"),
-          household.number ?? null,
-          household.key,
+          groupBox,
+          groupLine,
+          group.type,
+          lookup(memberIds, main.member.key, "person"),
+          eventYear,
+          group.place === undefined ? null : lookup(placeIds, group.place, "place"),
+          group.number ?? null,
+          group.key,
           reading.source ?? null,
+          date?.from ?? null,
+          date?.to ?? null,
+          date === undefined ? null : (group.dateQual ?? "exact"),
+          group.regDate ?? null,
         ],
       );
       counts.events += 1;
@@ -279,7 +377,7 @@ function writeReading(db: DatabaseSync, runId: number, reading: Reading): Ingest
     for (const id of memberIds.values()) {
       db.prepare("update person set event_id = ? where id = ?").run(eventId, id);
     }
-    addAttributes("event_id", eventId, household.attributes, householdBox);
+    addAttributes("event_id", eventId, group.attributes, groupBox);
     const tieEnd = (ref: string): number => {
       if (ref === "@head" || ref === "@spouse") {
         if (continued === undefined) throw new Error(`«${ref}» is only for a continued household`);
@@ -289,7 +387,7 @@ function writeReading(db: DatabaseSync, runId: number, reading: Reading): Ingest
       }
       return lookup(memberIds, ref, "person");
     };
-    for (const tie of household.ties) {
+    for (const tie of group.ties) {
       insert(
         db,
         `insert into tie (run_id, scan_id, box_id, line_id, person_id, other_id, type, relation, up,
@@ -298,8 +396,8 @@ function writeReading(db: DatabaseSync, runId: number, reading: Reading): Ingest
         [
           runId,
           scanId,
-          boxId(tie.box) ?? householdBox,
-          lineOf(tie.line) ?? householdLine,
+          boxId(tie.box) ?? groupBox,
+          lineOf(tie.line) ?? groupLine,
           tieEnd(tie.person),
           tieEnd(tie.other),
           tie.type,
@@ -314,9 +412,7 @@ function writeReading(db: DatabaseSync, runId: number, reading: Reading): Ingest
   }
 
   const membersByKey = new Map(
-    reading.households.flatMap((household) =>
-      household.members.map((member) => [member.key, member] as const),
-    ),
+    groups.flatMap((group) => group.members.map(({ member }) => [member.key, member] as const)),
   );
   for (const doubt of reading.doubts) {
     if (

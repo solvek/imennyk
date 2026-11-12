@@ -2,14 +2,14 @@
 import { createRequire as __createRequire } from "node:module"; const require = __createRequire(import.meta.url);
 import {
   readingSchema
-} from "./chunk-T57SJMFP.mjs";
+} from "./chunk-HJ46F4V7.mjs";
 import {
   localOperatorPath,
   readOperator,
   requireOperator,
   require_dist,
   writeOperator
-} from "./chunk-7FCHIHK4.mjs";
+} from "./chunk-VUDURIKB.mjs";
 import {
   __toESM,
   external_exports,
@@ -18,7 +18,7 @@ import {
   runSummary,
   selectRows,
   startRun
-} from "./chunk-IPSGNSK4.mjs";
+} from "./chunk-JKXNLTKN.mjs";
 
 // src/indexing/cli.ts
 var import_yaml = __toESM(require_dist(), 1);
@@ -430,6 +430,62 @@ function lookup(map, key, what) {
   if (id === void 0) throw new Error(`unknown ${what} key \xAB${key}\xBB`);
   return id;
 }
+function groupsOf(reading) {
+  const households = reading.households.map((household) => ({
+    kind: "household",
+    key: household.key,
+    type: "confession",
+    number: household.number,
+    place: household.place,
+    date: void 0,
+    dateQual: void 0,
+    regDate: void 0,
+    attributes: household.attributes,
+    members: household.members.map((member) => ({
+      member,
+      main: member.head,
+      place: void 0
+    })),
+    ties: household.ties,
+    continues: household.continues,
+    box: household.box,
+    line: household.line
+  }));
+  const events = reading.events.map((event) => ({
+    kind: "event",
+    key: event.key,
+    type: event.type,
+    number: event.number,
+    place: event.place,
+    date: event.date,
+    dateQual: event.date_qual,
+    regDate: event.reg_date,
+    attributes: event.attributes,
+    members: event.members.map((member) => ({ member, main: member.main, place: member.place })),
+    ties: event.ties,
+    continues: void 0,
+    box: event.box,
+    line: event.line
+  }));
+  return [...households, ...events];
+}
+function datesOf(date) {
+  const [y = "", m, d] = date.split("-");
+  const year = Number(y);
+  const month = m === void 0 ? void 0 : Number(m);
+  const day = d === void 0 ? void 0 : Number(d);
+  const last = (mm) => new Date(Date.UTC(year, mm, 0)).getUTCDate();
+  if (month !== void 0 && (month < 1 || month > 12)) throw new Error(`not a date: \xAB${date}\xBB`);
+  if (month !== void 0 && day !== void 0 && (day < 1 || day > last(month))) {
+    throw new Error(`not a date: \xAB${date}\xBB`);
+  }
+  const two = (n) => String(n).padStart(2, "0");
+  if (month === void 0) return { from: `${y}-01-01`, to: `${y}-12-31` };
+  if (day === void 0)
+    return { from: `${y}-${two(month)}-01`, to: `${y}-${two(month)}-${two(last(month))}` };
+  const full = `${y}-${two(month)}-${two(day)}`;
+  return { from: full, to: full };
+}
 function findHousehold(db, from) {
   const event = selectRows(
     db,
@@ -543,27 +599,31 @@ function writeReading(db, runId, reading) {
   }
   const personIds = /* @__PURE__ */ new Map();
   const personBoxes = /* @__PURE__ */ new Map();
-  for (const household of reading.households) {
-    const heads = household.members.filter((member) => member.head);
-    const continued = household.continues === void 0 ? void 0 : findHousehold(db, household.continues);
-    if (continued === void 0 ? heads.length !== 1 : heads.length !== 0) {
+  const groups = groupsOf(reading);
+  for (const group of groups) {
+    const mains = group.members.filter((member) => member.main);
+    const continued = group.continues === void 0 ? void 0 : findHousehold(db, group.continues);
+    if (continued === void 0 ? mains.length !== 1 : mains.length !== 0) {
+      const what = group.kind === "household" ? "household" : "event";
+      const who = group.kind === "household" ? "head" : "main person";
       throw new Error(
-        continued === void 0 ? `household \xAB${household.key}\xBB must have exactly one head, has ${String(heads.length)}` : `household \xAB${household.key}\xBB continues another one and must have no head`
+        continued === void 0 ? `${what} \xAB${group.key}\xBB must have exactly one ${who}, has ${String(mains.length)}` : `${what} \xAB${group.key}\xBB continues another one and must have no ${who}`
       );
     }
-    const householdBox = boxId(household.box);
-    const householdLine = lineOf(household.line);
+    const groupBox = boxId(group.box);
+    const groupLine = lineOf(group.line);
+    const eventYear = group.date === void 0 ? reading.year : Number(group.date.slice(0, 4));
     const memberIds = /* @__PURE__ */ new Map();
-    for (const member of household.members) {
+    for (const { member, place } of group.members) {
       if (personIds.has(member.key)) throw new Error(`duplicate person key \xAB${member.key}\xBB`);
-      const birth = typeof member.age === "number" ? birthRange(reading.year, member.age) : void 0;
-      const memberBox = boxId(member.box) ?? householdBox;
-      const memberLine = lineOf(member.line) ?? householdLine;
+      const birth = typeof member.age === "number" ? birthRange(eventYear, member.age) : void 0;
+      const memberBox = boxId(member.box) ?? groupBox;
+      const memberLine = lineOf(member.line) ?? groupLine;
       const id = insert(
         db,
         `insert into person (run_id, scan_id, box_id, line_id, gender, given, patronymic, surname,
-                             age, birth_from, birth_to, birth_qual)
-         values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                             age, birth_from, birth_to, birth_qual, place_id)
+         values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           runId,
           scanId,
@@ -576,7 +636,8 @@ function writeReading(db, runId, reading) {
           member.age === void 0 ? null : String(member.age),
           birth?.from ?? null,
           birth?.to ?? null,
-          birth === void 0 ? null : "calculated"
+          birth === void 0 ? null : "calculated",
+          place === void 0 ? null : lookup(placeIds, place, "place")
         ]
       );
       addAttributes("person_id", id, member.attributes, memberBox);
@@ -599,28 +660,34 @@ function writeReading(db, runId, reading) {
         counts.nameMentions += 1;
       }
     }
-    const head = heads[0];
+    const main2 = mains[0];
     let eventId;
     if (continued !== void 0) {
       eventId = continued.eventId;
     } else {
-      if (head === void 0) throw new Error("unreachable: household without head");
+      if (main2 === void 0) throw new Error("unreachable: an event without a main person");
+      const date = group.date === void 0 ? void 0 : datesOf(group.date);
       eventId = insert(
         db,
         `insert into event (run_id, scan_id, box_id, line_id, type, main_person_id, year, place_id,
-                            number, key, source_id)
-         values (?, ?, ?, ?, 'confession', ?, ?, ?, ?, ?, ?)`,
+                            number, key, source_id, date_from, date_to, date_qual, reg_date)
+         values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           runId,
           scanId,
-          householdBox,
-          householdLine,
-          lookup(memberIds, head.key, "person"),
-          reading.year,
-          household.place === void 0 ? null : lookup(placeIds, household.place, "place"),
-          household.number ?? null,
-          household.key,
-          reading.source ?? null
+          groupBox,
+          groupLine,
+          group.type,
+          lookup(memberIds, main2.member.key, "person"),
+          eventYear,
+          group.place === void 0 ? null : lookup(placeIds, group.place, "place"),
+          group.number ?? null,
+          group.key,
+          reading.source ?? null,
+          date?.from ?? null,
+          date?.to ?? null,
+          date === void 0 ? null : group.dateQual ?? "exact",
+          group.regDate ?? null
         ]
       );
       counts.events += 1;
@@ -628,7 +695,7 @@ function writeReading(db, runId, reading) {
     for (const id of memberIds.values()) {
       db.prepare("update person set event_id = ? where id = ?").run(eventId, id);
     }
-    addAttributes("event_id", eventId, household.attributes, householdBox);
+    addAttributes("event_id", eventId, group.attributes, groupBox);
     const tieEnd = (ref) => {
       if (ref === "@head" || ref === "@spouse") {
         if (continued === void 0) throw new Error(`\xAB${ref}\xBB is only for a continued household`);
@@ -638,7 +705,7 @@ function writeReading(db, runId, reading) {
       }
       return lookup(memberIds, ref, "person");
     };
-    for (const tie of household.ties) {
+    for (const tie of group.ties) {
       insert(
         db,
         `insert into tie (run_id, scan_id, box_id, line_id, person_id, other_id, type, relation, up,
@@ -647,8 +714,8 @@ function writeReading(db, runId, reading) {
         [
           runId,
           scanId,
-          boxId(tie.box) ?? householdBox,
-          lineOf(tie.line) ?? householdLine,
+          boxId(tie.box) ?? groupBox,
+          lineOf(tie.line) ?? groupLine,
           tieEnd(tie.person),
           tieEnd(tie.other),
           tie.type,
@@ -662,9 +729,7 @@ function writeReading(db, runId, reading) {
     }
   }
   const membersByKey = new Map(
-    reading.households.flatMap(
-      (household) => household.members.map((member) => [member.key, member])
-    )
+    groups.flatMap((group) => group.members.map(({ member }) => [member.key, member]))
   );
   for (const doubt of reading.doubts) {
     if (doubt.person !== void 0 && (doubt.element === "surname" || doubt.element === "given" || doubt.element === "patronymic")) {

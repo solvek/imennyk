@@ -19904,6 +19904,23 @@ function readRunErrorRate(db, runId) {
 }
 
 // src/indexing/enums.ts
+var EVENT_TYPES = [
+  "birth",
+  "baptism",
+  "marriage",
+  "banns",
+  "divorce",
+  "death",
+  "burial",
+  "census",
+  "confession",
+  "residence",
+  "occupation",
+  "military",
+  "emigration",
+  "education",
+  "property"
+];
 var TIE_TYPES = [
   "child",
   "spouse",
@@ -19945,6 +19962,7 @@ export {
   selectRows,
   openCaseDb,
   inTransaction,
+  EVENT_TYPES,
   TIE_TYPES,
   DATE_QUALS,
   GENDERS,

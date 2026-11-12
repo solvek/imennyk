@@ -2,12 +2,14 @@
 import { createRequire as __createRequire } from "node:module"; const require = __createRequire(import.meta.url);
 import {
   BOX_ORIGINS,
+  DATE_QUALS,
   DOUBT_ELEMENTS,
+  EVENT_TYPES,
   GENDERS,
   PLACE_TYPES,
   TIE_TYPES,
   external_exports
-} from "./chunk-IPSGNSK4.mjs";
+} from "./chunk-JKXNLTKN.mjs";
 
 // src/indexing/attribute-types.ts
 var ATTRIBUTE_TYPES = [
@@ -216,6 +218,30 @@ var householdSchema = external_exports.strictObject({
   continues: external_exports.strictObject({ scan: external_exports.string().min(1), household: key }).optional(),
   ...provenance
 });
+var eventMemberSchema = memberSchema.omit({ head: true }).extend({
+  /** The main person of the event: the groom of a marriage, the child of a birth, the dead of a death. */
+  main: external_exports.boolean().default(false),
+  /** Where the person is from (a key of `places`): the village of the groom, not that of the bride. */
+  place: key.optional()
+});
+var flexDate = external_exports.string().regex(/^\d{4}(-\d{2}(-\d{2})?)?$/, "a date is YYYY, YYYY-MM or YYYY-MM-DD");
+var eventSchema = external_exports.strictObject({
+  key,
+  type: external_exports.enum(EVENT_TYPES).exclude(["confession"]),
+  /** The number of the record in the register. */
+  number: external_exports.string().min(1).optional(),
+  /** When it happened; without it the event is dated by the year of the reading. */
+  date: flexDate.optional(),
+  date_qual: external_exports.enum(DATE_QUALS).optional(),
+  /** The day of the act when it is another than the event (the baptism of a birth, the burial of a death). */
+  reg_date: external_exports.string().regex(/^\d{4}-\d{2}-\d{2}$/, "a date of the act is YYYY-MM-DD").optional(),
+  /** Where the event took place (a key of `places`). */
+  place: key.optional(),
+  attributes: external_exports.array(attributeSchema).default([]),
+  members: external_exports.array(eventMemberSchema).min(1),
+  ties: external_exports.array(tieSchema).default([]),
+  ...provenance
+});
 var doubtSchema = external_exports.strictObject({
   element: external_exports.enum(DOUBT_ELEMENTS),
   person: key.optional(),
@@ -246,6 +272,8 @@ var readingSchema = external_exports.strictObject({
     })
   ).default([]),
   households: external_exports.array(householdSchema).default([]),
+  /** Records of a register (births, marriages, deaths …): events with a date, not households. */
+  events: external_exports.array(eventSchema).default([]),
   doubts: external_exports.array(doubtSchema).default([]),
   /** Words of this case only; a word already there is kept as it is. */
   dictionary: external_exports.array(

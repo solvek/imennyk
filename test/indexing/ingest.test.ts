@@ -2,7 +2,7 @@ import type { DatabaseSync } from "node:sqlite";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { openCaseDb, selectRows } from "../../src/indexing/db.ts";
-import { birthRange, ingestReading } from "../../src/indexing/ingest.ts";
+import { birthRange, datesOf, ingestReading } from "../../src/indexing/ingest.ts";
 import { savePulled } from "../../src/indexing/pull.ts";
 import { startRun } from "../../src/indexing/run.ts";
 
@@ -497,5 +497,186 @@ describe("household over a page break", () => {
       ],
     };
     expect(() => ingestReading(db, run, ordinary)).toThrow(/only for a continued household/);
+  });
+});
+
+const marriage = {
+  scan: "n_1",
+  year: 1882,
+  places: [
+    { key: "v1", name: "Тестоград", type: "settlement" },
+    { key: "v2", name: "Вигадане", type: "settlement" },
+  ],
+  events: [
+    {
+      key: "m1",
+      type: "marriage",
+      number: "3",
+      date: "1882-02-05",
+      reg_date: "1882-02-05",
+      attributes: [{ type: "note", value: "Згода опікунського суду від 1.02 ч. 12" }],
+      members: [
+        {
+          key: "g",
+          main: true,
+          given: "Іван",
+          surname: "Тестенко",
+          gender: "male",
+          age: 23,
+          place: "v1",
+        },
+        { key: "b", given: "Марія", surname: "Вигадана", gender: "female", age: 19, place: "v2" },
+        { key: "gf", given: "Петро", surname: "Тестенко", gender: "male" },
+        { key: "bf", given: "Андрій", surname: "Вигадана", gender: "male" },
+        { key: "w", given: "Семен", surname: "Свідок", gender: "male" },
+        { key: "pr", given: "Григорій", surname: "Священик", gender: "male" },
+      ],
+      ties: [
+        { person: "b", other: "g", type: "spouse" },
+        { person: "g", other: "gf", type: "child" },
+        { person: "b", other: "bf", type: "child" },
+        { person: "w", other: "g", type: "witness" },
+        { person: "pr", other: "g", type: "officiant" },
+      ],
+    },
+    {
+      key: "m2",
+      type: "marriage",
+      date: "1882-03",
+      members: [
+        { key: "g2", main: true, given: "Олекса", gender: "male" },
+        { key: "b2", given: "Ганна", gender: "female" },
+      ],
+      ties: [{ person: "b2", other: "g2", type: "spouse" }],
+    },
+  ],
+};
+
+describe("ingestReading: records of a register", () => {
+  it("writes a marriage as an event with its date, the people and the place of each", () => {
+    const { db, run } = setup();
+    const result = ingestReading(db, run, marriage);
+    expect(result).toMatchObject({ events: 2, persons: 8, ties: 6, attributes: 1, places: 2 });
+    const events = selectRows(
+      db,
+      z.object({
+        type: z.string(),
+        main: z.string(),
+        year: z.number(),
+        number: z.string().nullable(),
+        from: z.string().nullable(),
+        to: z.string().nullable(),
+        qual: z.string().nullable(),
+        reg: z.string().nullable(),
+      }),
+      `select e.type, p.given as main, e.year, e.number, e.date_from as 'from', e.date_to as 'to',
+              e.date_qual as qual, e.reg_date as reg
+         from event e join person p on p.id = e.main_person_id order by e.id`,
+    );
+    expect(events).toEqual([
+      {
+        type: "marriage",
+        main: "Іван",
+        year: 1882,
+        number: "3",
+        from: "1882-02-05",
+        to: "1882-02-05",
+        qual: "exact",
+        reg: "1882-02-05",
+      },
+      {
+        type: "marriage",
+        main: "Олекса",
+        year: 1882,
+        number: null,
+        from: "1882-03-01",
+        to: "1882-03-31",
+        qual: "exact",
+        reg: null,
+      },
+    ]);
+    const people = selectRows(
+      db,
+      z.object({ given: z.string(), place: z.string().nullable(), event: z.number() }),
+      `select p.given, pl.name as place, p.event_id as event from person p
+         left join place pl on pl.id = p.place_id order by p.id`,
+    );
+    expect(people.slice(0, 2)).toEqual([
+      { given: "Іван", place: "Тестоград", event: 1 },
+      { given: "Марія", place: "Вигадане", event: 1 },
+    ]);
+    expect(people.every((p) => p.event === 1 || p.event === 2)).toBe(true);
+  });
+
+  it("counts the age from the year of the event date, not of the reading", () => {
+    const { db, run } = setup();
+    ingestReading(db, run, { ...marriage, year: 1900 });
+    const [groom] = selectRows(
+      db,
+      z.object({ from: z.number(), to: z.number() }),
+      "select birth_from as 'from', birth_to as 'to' from person where given = 'Іван'",
+    );
+    expect(groom).toEqual({ from: 1858, to: 1859 });
+  });
+
+  it("dates an event without a date by the year of the reading", () => {
+    const { db, run } = setup();
+    const undated = structuredClone(marriage);
+    const [first] = undated.events;
+    if (first === undefined) throw new Error("fixture");
+    delete (first as { date?: string }).date;
+    ingestReading(db, run, undated);
+    const [event] = selectRows(
+      db,
+      z.object({ year: z.number(), from: z.string().nullable() }),
+      "select year, date_from as 'from' from event order by id",
+    );
+    expect(event).toEqual({ year: 1882, from: null });
+  });
+
+  it("rejects a record without exactly one main person, a confession record and a false date", () => {
+    const { db, run } = setup();
+    const none = structuredClone(marriage);
+    const members = none.events[0]?.members;
+    if (members === undefined) throw new Error("fixture");
+    members.forEach((member) => {
+      delete (member as { main?: boolean }).main;
+    });
+    expect(() => ingestReading(db, run, none)).toThrow(/must have exactly one main person, has 0/);
+
+    const confession = structuredClone(marriage);
+    const event = confession.events[0];
+    if (event === undefined) throw new Error("fixture");
+    event.type = "confession";
+    expect(() => ingestReading(db, run, confession)).toThrow(/events.*type/s);
+
+    const feb30 = structuredClone(marriage);
+    const dated = feb30.events[0];
+    if (dated === undefined) throw new Error("fixture");
+    dated.date = "1882-02-30";
+    expect(() => ingestReading(db, run, feb30)).toThrow(/not a date/);
+    dated.date = "5 лютого 1882";
+    expect(() => ingestReading(db, run, feb30)).toThrow(/YYYY/);
+    for (const table of ["person", "event", "tie"]) expect(n(db, table)).toBe(0);
+  });
+
+  it("checks a doubt against the people of a record too", () => {
+    const { db, run } = setup();
+    const doubtful = {
+      ...structuredClone(marriage),
+      doubts: [{ element: "surname", person: "w", read: "Свідок", variants: "Свідик" }],
+    };
+    expect(ingestReading(db, run, doubtful).doubts).toBe(1);
+    const bad = {
+      ...structuredClone(marriage),
+      doubts: [{ element: "patronymic", person: "w", read: "Петрович" }],
+    };
+    expect(() => ingestReading(db, run, bad)).toThrow(/has no patronymic/);
+  });
+
+  it("reads the date of a record whole, or by the month, or by the year", () => {
+    expect(datesOf("1882")).toEqual({ from: "1882-01-01", to: "1882-12-31" });
+    expect(datesOf("1884-02")).toEqual({ from: "1884-02-01", to: "1884-02-29" });
+    expect(datesOf("1882-02-05")).toEqual({ from: "1882-02-05", to: "1882-02-05" });
   });
 });
