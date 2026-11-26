@@ -77,3 +77,60 @@ describe("compactToReading places", () => {
     expect(reading.households.map((h) => h.place)).toEqual(["v1", "v2"]);
   });
 });
+
+describe("compactToReading household numbers", () => {
+  it("takes the number written at the head from `house`, and derives it when there is none", () => {
+    const { reading } = compactToReading(
+      "scan s\nyear 1912\ncols L 1 9\npage L\nhouse 12\n10;H;m;А;Б;В;40\n200;H;m;Г;Д;Е;30",
+      { start: { m: 0, f: 0 } },
+    );
+    const [written, derived] = reading.households;
+    expect(written?.number).toBe("12");
+    expect(written?.attributes).toEqual([]);
+    expect(derived?.number).toBe("1");
+    expect(derived?.attributes.map((a) => a.type)).toEqual(["note"]);
+  });
+});
+
+describe("compactToReading ties to another member", () => {
+  const FAMILY = [
+    "scan s",
+    "year 1912",
+    "cols L 100 900",
+    "page L",
+    "1000;H;m;Григорій;Даниловъ;Антонюкъ;57",
+    "1100;s;f;Марфа;;;18",
+    "1200;s;m;Яковъ;;;28",
+    "1300;W@1200;f;Евдокія;Несторова;;28",
+    "1400;C@1200;m;Трофимъ;;;5",
+    "1500;c@1300;f;Елена;;;7",
+  ].join("\n");
+
+  it("ties the wife and the children of a son to him, not to the head", () => {
+    const { reading } = compactToReading(FAMILY, { start: { m: 0, f: 0 } });
+    const [household] = reading.households;
+    const key = (given: string): string =>
+      household?.members.find((m) => m.given === given)?.key ?? "";
+    const ties = (household?.ties ?? []).map((t) => `${t.type}:${t.person}>${t.other}`);
+    expect(ties).toEqual([
+      `child:${key("Марфа")}>${key("Григорій")}`,
+      `child:${key("Яковъ")}>${key("Григорій")}`,
+      `spouse:${key("Евдокія")}>${key("Яковъ")}`,
+      `child:${key("Трофимъ")}>${key("Яковъ")}`,
+      `child:${key("Трофимъ")}>${key("Евдокія")}`,
+      `child:${key("Елена")}>${key("Евдокія")}`,
+    ]);
+  });
+
+  it("refuses a reference to a row that the household does not have", () => {
+    expect(() =>
+      compactToReading(FAMILY.replace("W@1200", "W@1250"), { start: { m: 0, f: 0 } }),
+    ).toThrow(/line 8: no row at y 1250/);
+  });
+
+  it("keeps the kin roles tied to the head only", () => {
+    expect(() =>
+      compactToReading(FAMILY.replace("W@1200", "K:сестра:1:1@1200"), { start: { m: 0, f: 0 } }),
+    ).toThrow(/line 8/);
+  });
+});

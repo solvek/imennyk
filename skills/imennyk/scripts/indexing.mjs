@@ -128,6 +128,7 @@ function compactToReading(text, options) {
   let page;
   let section;
   let pendingCont;
+  let pendingHouse;
   const scanNotes = [];
   const households = [];
   const doubts = [];
@@ -151,6 +152,9 @@ function compactToReading(text, options) {
       if (yFrom === void 0 || yTo === void 0 || !Number.isFinite(yFrom) || !Number.isFinite(yTo)) {
         fail(n, `bad y \xAB${yRaw}\xBB`);
       }
+      const at = role.indexOf("@");
+      const roleName = at === -1 ? role : role.slice(0, at);
+      const refY = at === -1 ? void 0 : Number(role.slice(at + 1));
       const gender = g === "m" ? "male" : g === "f" ? "female" : void 0;
       if (gender === void 0) fail(n, `gender must be m or f, not \xAB${g}\xBB`);
       const [x0, x1] = cols.get(page) ?? [0, 0];
@@ -209,8 +213,8 @@ function compactToReading(text, options) {
         const number = Math.max(1, Math.ceil(counters.m / 4));
         const household = {
           key: `h${String(households.length + 1)}`,
-          number: String(number),
-          attributes: [{ type: "note", value: "\u041D\u043E\u043C\u0435\u0440 \u0434\u0432\u043E\u0440\u0443 \u0432\u0438\u0432\u0435\u0434\u0435\u043D\u043E: \u0431\u0456\u043B\u044F \u0434\u0432\u043E\u0440\u0443 \u043D\u0435 \u043D\u0430\u0434\u0440\u0443\u043A\u043E\u0432\u0430\u043D\u043E" }],
+          number: pendingHouse ?? String(number),
+          attributes: pendingHouse === void 0 ? [{ type: "note", value: "\u041D\u043E\u043C\u0435\u0440 \u0434\u0432\u043E\u0440\u0443 \u0432\u0438\u0432\u0435\u0434\u0435\u043D\u043E: \u0431\u0456\u043B\u044F \u0434\u0432\u043E\u0440\u0443 \u043D\u0435 \u043D\u0430\u0434\u0440\u0443\u043A\u043E\u0432\u0430\u043D\u043E" }] : [],
           members: [member],
           ties: [],
           box,
@@ -218,26 +222,39 @@ function compactToReading(text, options) {
         };
         if (section !== void 0) household.attributes.push({ type: "status", value: section });
         households.push(household);
-        current = { household, head: member };
+        current = {
+          household,
+          head: member,
+          rows: /* @__PURE__ */ new Map([[yFrom, member]]),
+          partners: /* @__PURE__ */ new Map()
+        };
+        pendingHouse = void 0;
         continued = false;
       } else {
         if (current === void 0) {
           if (pendingCont === void 0) fail(n, "a row without head needs `cont` before it");
-          const target = pendingCont;
+          const target2 = pendingCont;
           const household2 = {
             key: `h${String(households.length + 1)}`,
             attributes: [],
             members: [],
             ties: [],
-            continues: { scan: target.scan, household: target.household },
+            continues: { scan: target2.scan, household: target2.household },
             box
           };
           households.push(household2);
-          current = { household: household2 };
+          current = { household: household2, rows: /* @__PURE__ */ new Map(), partners: /* @__PURE__ */ new Map() };
           continued = true;
         }
-        const { household } = current;
+        const { household, rows, partners } = current;
+        let target;
+        if (refY !== void 0) {
+          if (!/^[WSDCsdc]$/.test(roleName)) fail(n, `\xAB@\xBB does not go with the role \xAB${role}\xBB`);
+          target = rows.get(refY);
+          if (target === void 0) fail(n, `no row at y ${String(refY)} in this household`);
+        }
         household.members.push(member);
+        rows.set(yFrom, member);
         if (household.box !== void 0) {
           const top = Math.min(household.box.y, box.y);
           const bottom = Math.max(household.box.y + household.box.h, box.y + box.h);
@@ -249,9 +266,25 @@ function compactToReading(text, options) {
           household.ties.push(tie);
         };
         const spouseRef = continued ? pendingCont?.spouse === true && current.wife === void 0 ? "@spouse" : current.wife?.key : current.wife?.key;
-        if (role === "W") {
+        if (target !== void 0) {
+          if (roleName === "W") {
+            add({ person: member.key, other: target.key, type: "spouse" });
+            if (!partners.has(target.key)) partners.set(target.key, member);
+            partners.set(member.key, target);
+          } else {
+            add({ person: member.key, other: target.key, type: "child" });
+            const partner = partners.get(target.key);
+            if (/^[SDC]$/.test(roleName) && partner !== void 0) {
+              add({ person: member.key, other: partner.key, type: "child" });
+            }
+          }
+        } else if (role === "W") {
           add({ person: member.key, other: headRef, type: "spouse" });
           current.wife ??= member;
+          if (current.head !== void 0 && !partners.has(current.head.key)) {
+            partners.set(current.head.key, member);
+            partners.set(member.key, current.head);
+          }
         } else if (role === "S" || role === "D" || role === "C") {
           add({ person: member.key, other: headRef, type: "child" });
           if (spouseRef !== void 0) add({ person: member.key, other: spouseRef, type: "child" });
@@ -295,6 +328,10 @@ function compactToReading(text, options) {
         return;
       case "section":
         section = rest === "" ? void 0 : rest;
+        return;
+      case "house":
+        if (rest === "") fail(n, "\xABhouse\xBB needs the number");
+        pendingHouse = rest;
         return;
       case "cont": {
         const [s = "", h = "", flag] = rest.split(/\s+/);

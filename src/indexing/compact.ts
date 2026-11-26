@@ -9,6 +9,7 @@
 //   cols L 1068 1955              x range (scan px) of the name column of page L; R likewise
 //   page L                        the page the following rows are on
 //   section Духовные              status attribute of the households that begin from here on
+//   house 12                      the number written at the head of the next household (without it the number is derived)
 //   cont 434 h27 [spouse]         the first rows continue household h27 of scan 434 (no head)
 //   printed 24 20                 check: the counters of men and women after the previous row
 //   snote text                    attribute `note` of the scan
@@ -17,7 +18,9 @@
 //   ! surname;read;variants;note  doubt about a word of the last person
 // Roles: H head; W wife (spouse of the head); S/D/C child of the head and of his first wife (son,
 // daughter, child — the gender field says which); s/d/c child of the head only; K:relation:up:down
-// another kin of the head. Gender is m or f. `serial` is empty (counted) or the printed number. A serial of `-` means the person has no number in the counters (not counted). The last field: `occ:<occupation>`, `rel:<religion>` and/or notes, separated by «|».
+// another kin of the head. W, S, D, C, s, d, c take «@y» to tie the person to another member of the
+// household instead of the head, the row that begins at that y: W@1200 the wife of that man, S@1200 a
+// child of that person and of the spouse, s@1200 a child of that person only. Gender is m or f. `serial` is empty (counted) or the printed number. A serial of `-` means the person has no number in the counters (not counted). The last field: `occ:<occupation>`, `rel:<religion>` and/or notes, separated by «|».
 import { type Reading, readingSchema } from "./reading.ts";
 
 export interface CompactOptions {
@@ -90,12 +93,22 @@ export function compactToReading(
   let page: string | undefined;
   let section: string | undefined;
   let pendingCont: { scan: string; household: string; spouse: boolean } | undefined;
+  let pendingHouse: string | undefined;
   const scanNotes: string[] = [];
   const households: Household[] = [];
   const doubts: Record<string, unknown>[] = [];
   const counters = { m: options.start.m, f: options.start.f };
   let last: Member | undefined;
-  let current: { household: Household; head?: Member; wife?: Member } | undefined;
+  // The rows map finds a member by the y of its row; partners holds the spouse of a member, both ways.
+  let current:
+    | {
+        household: Household;
+        head?: Member;
+        wife?: Member;
+        rows: Map<number, Member>;
+        partners: Map<string, Member>;
+      }
+    | undefined;
   let continued = false;
   let persons = 0;
 
@@ -121,6 +134,9 @@ export function compactToReading(
       ) {
         fail(n, `bad y «${yRaw}»`);
       }
+      const at = role.indexOf("@");
+      const roleName = at === -1 ? role : role.slice(0, at);
+      const refY = at === -1 ? undefined : Number(role.slice(at + 1));
       const gender: Gender | undefined = g === "m" ? "male" : g === "f" ? "female" : undefined;
       if (gender === undefined) fail(n, `gender must be m or f, not «${g}»`);
       const [x0, x1] = cols.get(page) ?? [0, 0];
@@ -183,8 +199,11 @@ export function compactToReading(
         const number = Math.max(1, Math.ceil(counters.m / 4));
         const household: Household = {
           key: `h${String(households.length + 1)}`,
-          number: String(number),
-          attributes: [{ type: "note", value: "Номер двору виведено: біля двору не надруковано" }],
+          number: pendingHouse ?? String(number),
+          attributes:
+            pendingHouse === undefined
+              ? [{ type: "note", value: "Номер двору виведено: біля двору не надруковано" }]
+              : [],
           members: [member],
           ties: [],
           box,
@@ -192,7 +211,13 @@ export function compactToReading(
         };
         if (section !== undefined) household.attributes.push({ type: "status", value: section });
         households.push(household);
-        current = { household, head: member };
+        current = {
+          household,
+          head: member,
+          rows: new Map([[yFrom, member]]),
+          partners: new Map(),
+        };
+        pendingHouse = undefined;
         continued = false;
       } else {
         if (current === undefined) {
@@ -207,11 +232,18 @@ export function compactToReading(
             box,
           };
           households.push(household);
-          current = { household };
+          current = { household, rows: new Map(), partners: new Map() };
           continued = true;
         }
-        const { household } = current;
+        const { household, rows, partners } = current;
+        let target: Member | undefined;
+        if (refY !== undefined) {
+          if (!/^[WSDCsdc]$/.test(roleName)) fail(n, `«@» does not go with the role «${role}»`);
+          target = rows.get(refY);
+          if (target === undefined) fail(n, `no row at y ${String(refY)} in this household`);
+        }
         household.members.push(member);
+        rows.set(yFrom, member);
         if (household.box !== undefined) {
           const top = Math.min(household.box.y, box.y);
           const bottom = Math.max(household.box.y + household.box.h, box.y + box.h);
@@ -227,9 +259,25 @@ export function compactToReading(
             ? "@spouse"
             : current.wife?.key
           : current.wife?.key;
-        if (role === "W") {
+        if (target !== undefined) {
+          if (roleName === "W") {
+            add({ person: member.key, other: target.key, type: "spouse" });
+            if (!partners.has(target.key)) partners.set(target.key, member);
+            partners.set(member.key, target);
+          } else {
+            add({ person: member.key, other: target.key, type: "child" });
+            const partner = partners.get(target.key);
+            if (/^[SDC]$/.test(roleName) && partner !== undefined) {
+              add({ person: member.key, other: partner.key, type: "child" });
+            }
+          }
+        } else if (role === "W") {
           add({ person: member.key, other: headRef, type: "spouse" });
           current.wife ??= member;
+          if (current.head !== undefined && !partners.has(current.head.key)) {
+            partners.set(current.head.key, member);
+            partners.set(member.key, current.head);
+          }
         } else if (role === "S" || role === "D" || role === "C") {
           add({ person: member.key, other: headRef, type: "child" });
           if (spouseRef !== undefined) add({ person: member.key, other: spouseRef, type: "child" });
@@ -274,6 +322,10 @@ export function compactToReading(
         return;
       case "section":
         section = rest === "" ? undefined : rest;
+        return;
+      case "house":
+        if (rest === "") fail(n, "«house» needs the number");
+        pendingHouse = rest;
         return;
       case "cont": {
         const [s = "", h = "", flag] = rest.split(/\s+/);
