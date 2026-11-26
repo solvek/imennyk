@@ -134,3 +134,43 @@ describe("compactToReading ties to another member", () => {
     ).toThrow(/line 8/);
   });
 });
+
+describe("compactToReading parents, members without a tie, older kin", () => {
+  const ties = (text: string): string[] => {
+    const { reading } = compactToReading(text, { start: { m: 0, f: 0 } });
+    return reading.households.flatMap((household) =>
+      household.ties.map(
+        (t) =>
+          `${t.type}:${t.person}>${t.other}` +
+          (t.type === "kin" ? `:${String(t.up)}:${String(t.down)}` : ""),
+      ),
+    );
+  };
+  const HEAD = "scan s\nyear 1912\ncols L 100 900\npage L\n1000;H;m;Иванъ;Петровъ;Сидоренко;44";
+
+  it("writes a parent of the head as the head's child tie", () => {
+    expect(ties(`${HEAD}\n1100;P;f;Анна;;;70`)).toEqual(["child:p0>p1"]);
+  });
+
+  it("writes a parent of another member with «@y»", () => {
+    expect(ties(`${HEAD}\n1100;W;f;Марія;;;40\n1200;P@1100;f;Анна;;;70`)).toEqual([
+      "spouse:p1>p0",
+      "child:p1>p2",
+    ]);
+  });
+
+  it("writes no tie for a member whose kinship the row does not name", () => {
+    const { reading } = compactToReading(`${HEAD}\n1100;N;m;Яковъ;;;20;;работникъ`, {
+      start: { m: 0, f: 0 },
+    });
+    expect(reading.households[0]?.members).toHaveLength(2);
+    expect(reading.households[0]?.ties).toEqual([]);
+  });
+
+  it("turns the tie round when the member is of the older line", () => {
+    // An uncle is one step up from the head's parent: counted from the head it is 2 up, 1 down.
+    expect(ties(`${HEAD}\n1100;K:дядя его:1:2;m;Яковъ;;;60`)).toEqual(["kin:p0>p1:2:1"]);
+    expect(ties(`${HEAD}\n1100;K:дѣдъ его:0:2;m;Яковъ;;;80`)).toEqual(["kin:p0>p1:2:0"]);
+    expect(ties(`${HEAD}\n1100;K:племянникъ его:2:1;m;Яковъ;;;9`)).toEqual(["kin:p1>p0:2:1"]);
+  });
+});

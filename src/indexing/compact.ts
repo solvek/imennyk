@@ -18,7 +18,9 @@
 //   ! surname;read;variants;note  doubt about a word of the last person
 // Roles: H head; W wife (spouse of the head); S/D/C child of the head and of his first wife (son,
 // daughter, child — the gender field says which); s/d/c child of the head only; K:relation:up:down
-// another kin of the head. W, S, D, C, s, d, c take «@y» to tie the person to another member of the
+// another kin of the head (when the member is of the older line, down greater than up, the tie is written
+// from the head); P a parent of the head; N a member whose kinship the row does not name (no tie).
+// W, S, D, C, s, d, c, P take «@y» to tie the person to another member of the
 // household instead of the head, the row that begins at that y: W@1200 the wife of that man, S@1200 a
 // child of that person and of the spouse, s@1200 a child of that person only. Gender is m or f. `serial` is empty (counted) or the printed number. A serial of `-` means the person has no number in the counters (not counted). The last field: `occ:<occupation>`, `rel:<religion>` and/or notes, separated by «|».
 import { type Reading, readingSchema } from "./reading.ts";
@@ -238,7 +240,7 @@ export function compactToReading(
         const { household, rows, partners } = current;
         let target: Member | undefined;
         if (refY !== undefined) {
-          if (!/^[WSDCsdc]$/.test(roleName)) fail(n, `«@» does not go with the role «${role}»`);
+          if (!/^[WSDCsdcP]$/.test(roleName)) fail(n, `«@» does not go with the role «${role}»`);
           target = rows.get(refY);
           if (target === undefined) fail(n, `no row at y ${String(refY)} in this household`);
         }
@@ -264,6 +266,8 @@ export function compactToReading(
             add({ person: member.key, other: target.key, type: "spouse" });
             if (!partners.has(target.key)) partners.set(target.key, member);
             partners.set(member.key, target);
+          } else if (roleName === "P") {
+            add({ person: target.key, other: member.key, type: "child" });
           } else {
             add({ person: member.key, other: target.key, type: "child" });
             const partner = partners.get(target.key);
@@ -283,12 +287,20 @@ export function compactToReading(
           if (spouseRef !== undefined) add({ person: member.key, other: spouseRef, type: "child" });
         } else if (role === "s" || role === "d" || role === "c") {
           add({ person: member.key, other: headRef, type: "child" });
+        } else if (role === "P") {
+          add({ person: headRef, other: member.key, type: "child" });
+        } else if (role === "N") {
+          // The row names no kinship: the person is a member of the household without a tie.
         } else if (role.startsWith("K:")) {
           const [, relation = "", up = "", down = ""] = role.split(":");
-          const tie: Tie = { person: member.key, other: headRef, type: "kin" };
+          // A tie of kin is counted from the younger line: steps up to the common ancestor, then down.
+          const older = up !== "" && down !== "" && Number(up) < Number(down);
+          const tie: Tie = older
+            ? { person: headRef, other: member.key, type: "kin" }
+            : { person: member.key, other: headRef, type: "kin" };
           if (relation !== "") tie.relation = relation;
-          if (up !== "") tie.up = Number(up);
-          if (down !== "") tie.down = Number(down);
+          if (up !== "") tie[older ? "down" : "up"] = Number(up);
+          if (down !== "") tie[older ? "up" : "down"] = Number(down);
           add(tie);
         } else {
           fail(n, `unknown role «${role}»`);

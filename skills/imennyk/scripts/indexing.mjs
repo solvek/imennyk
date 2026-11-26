@@ -249,7 +249,7 @@ function compactToReading(text, options) {
         const { household, rows, partners } = current;
         let target;
         if (refY !== void 0) {
-          if (!/^[WSDCsdc]$/.test(roleName)) fail(n, `\xAB@\xBB does not go with the role \xAB${role}\xBB`);
+          if (!/^[WSDCsdcP]$/.test(roleName)) fail(n, `\xAB@\xBB does not go with the role \xAB${role}\xBB`);
           target = rows.get(refY);
           if (target === void 0) fail(n, `no row at y ${String(refY)} in this household`);
         }
@@ -271,6 +271,8 @@ function compactToReading(text, options) {
             add({ person: member.key, other: target.key, type: "spouse" });
             if (!partners.has(target.key)) partners.set(target.key, member);
             partners.set(member.key, target);
+          } else if (roleName === "P") {
+            add({ person: target.key, other: member.key, type: "child" });
           } else {
             add({ person: member.key, other: target.key, type: "child" });
             const partner = partners.get(target.key);
@@ -290,12 +292,16 @@ function compactToReading(text, options) {
           if (spouseRef !== void 0) add({ person: member.key, other: spouseRef, type: "child" });
         } else if (role === "s" || role === "d" || role === "c") {
           add({ person: member.key, other: headRef, type: "child" });
+        } else if (role === "P") {
+          add({ person: headRef, other: member.key, type: "child" });
+        } else if (role === "N") {
         } else if (role.startsWith("K:")) {
           const [, relation = "", up = "", down = ""] = role.split(":");
-          const tie = { person: member.key, other: headRef, type: "kin" };
+          const older = up !== "" && down !== "" && Number(up) < Number(down);
+          const tie = older ? { person: headRef, other: member.key, type: "kin" } : { person: member.key, other: headRef, type: "kin" };
           if (relation !== "") tie.relation = relation;
-          if (up !== "") tie.up = Number(up);
-          if (down !== "") tie.down = Number(down);
+          if (up !== "") tie[older ? "down" : "up"] = Number(up);
+          if (down !== "") tie[older ? "up" : "down"] = Number(down);
           add(tie);
         } else {
           fail(n, `unknown role \xAB${role}\xBB`);
