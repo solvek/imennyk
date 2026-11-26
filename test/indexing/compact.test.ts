@@ -174,3 +174,15 @@ describe("compactToReading parents, members without a tie, older kin", () => {
     expect(ties(`${HEAD}\n1100;K:племянникъ его:2:1;m;Яковъ;;;9`)).toEqual(["kin:p1>p0:2:1"]);
   });
 });
+
+describe("compactToReading summary", () => {
+  it("says the last head has a spouse only when the wife is the head's own", () => {
+    const text =
+      "scan s\nyear 1912\ncols L 100 900\npage L\n1000;H;m;Иванъ;Петровъ;Сидоренко;57\n1100;s;m;Яковъ;;;28\n1200;W@1100;f;Анна;;;28";
+    expect(compactToReading(text, { start: { m: 0, f: 0 } }).summary.lastHeadHasSpouse).toBe(false);
+    expect(
+      compactToReading(`${text}\n1300;W;f;Марія;;;50`, { start: { m: 0, f: 0 } }).summary
+        .lastHeadHasSpouse,
+    ).toBe(true);
+  });
+});

@@ -385,7 +385,8 @@ function compactToReading(text, options) {
     scan_attributes: scanNotes.map((value) => ({ type: "note", value }))
   };
   const lastHousehold = households.at(-1);
-  const headWife = lastHousehold?.ties.some((tie) => tie.type === "spouse") ?? false;
+  const lastHead = lastHousehold?.members.find((member) => member.head)?.key;
+  const headWife = lastHousehold?.ties.some((tie) => tie.type === "spouse" && tie.other === lastHead) ?? false;
   return {
     reading: readingSchema.parse(reading),
     summary: {
